@@ -145,6 +145,7 @@ async function loadCloudAccount(){
  ]);
  for(const q of [profile,walletRow,vehicles,inventory,tx,races])if(q.error)throw q.error;
  cloudGarage={profile:profile.data,wallet:walletRow.data,vehicles:vehicles.data||[],inventory:inventory.data||[],transactions:tx.data||[],races:races.data||[]};
+ const selectedVehicle=cloudGarage.vehicles.find(v=>v.is_selected);if(selectedVehicle)carId=selectedVehicle.vehicle_class;
  wallet.coins=walletRow.data?.coins||0;
  for(const type of ['acceleration','topSpeed','cornering','balance']){
   const rows=cloudGarage.inventory.filter(v=>v.vehicle_class===type);
