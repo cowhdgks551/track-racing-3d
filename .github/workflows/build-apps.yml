@@ -1,0 +1,73 @@
+name: Build TRACK RACING 3D apps
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'client/**'
+      - 'server/**'
+      - 'electron/**'
+      - 'package.json'
+      - 'capacitor.config.json'
+      - 'vite.config.js'
+      - '.github/workflows/build-apps.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    name: Windows installer
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm install
+      - name: Build web assets
+        run: npm run build
+        env:
+          VITE_GAME_SERVER_URL: https://track-racing-3d.onrender.com
+      - name: Package Windows installer
+        run: npx electron-builder --win nsis --x64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TRACK-RACING-3D-Windows-x64
+          path: release/*.exe
+          if-no-files-found: error
+          retention-days: 30
+
+  android:
+    name: Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: npm install
+      - name: Build web assets
+        run: npm run build
+        env:
+          VITE_GAME_SERVER_URL: https://track-racing-3d.onrender.com
+      - name: Generate Android project
+        run: npx cap add android
+      - name: Sync Android project
+        run: npx cap sync android
+      - name: Build installable debug APK
+        working-directory: android
+        run: chmod +x gradlew && ./gradlew assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TRACK-RACING-3D-Android-APK
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 30
