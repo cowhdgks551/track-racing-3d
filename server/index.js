@@ -33,6 +33,7 @@ function broadcast(room,data){for(const p of room.players.values())send(p.ws,dat
 function roomState(room){broadcast(room,snapshot(room));}
 function endRace(room){
  if(!room.started||room.resultsSent)return;
+ if(room.timeout)clearTimeout(room.timeout);
  room.started=false;room.resultsSent=true;
  const finishers=[...room.players.values()].filter(p=>p.finished).sort((a,b)=>a.finishTime-b.finishTime);
  const incomplete=[...room.players.values()].filter(p=>!p.finished);
@@ -96,6 +97,7 @@ wss.on('connection',ws=>{
     const blue=[...room.players.values()].filter(p=>p.team==='blue').length;
     if(!red||!blue||red+blue!==room.players.size)return send(player.ws,{type:'error',message:'팀전은 모든 참가자가 레드팀 또는 블루팀을 선택해야 하며, 양 팀에 1명 이상 있어야 합니다.'});
    }
+   if(room.timeout)clearTimeout(room.timeout);
    room.started=true;room.startedAt=Date.now();room.resultsSent=false;room.results=null;
    for(const p of room.players.values()){p.lap=0;p.progress=0;p.finished=false;p.finishTime=null;p.x=0;p.z=0;p.ready=true;}
    broadcast(room,{type:'race-start',at:Date.now(),config:room.config});
