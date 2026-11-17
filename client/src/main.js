@@ -154,7 +154,7 @@ async function loadCloudAccount(){
   const decal=rows.find(v=>v.cosmetic_catalog?.item_type==='decal'&&v.is_equipped);
   wallet.equipped[type]={paint:paint?.item_id||'default',decal:decal?.item_id||null,position:decal?.placement||{x:0,z:0,rotation:0}};
  }
- updateWalletUI();if($('garage').hidden===false)renderGarage();
+ updateWalletUI();
  if(profile.data?.nickname)$('nickname').value=profile.data.nickname;
  if(localCar)applyLocalCosmetics();
 }
@@ -303,7 +303,7 @@ function showResults(m){
 }
 function setMode(v){mode=v;if(online)send({type:'configure',mode,track:trackId});}
 function setTrack(v){trackId=v;activeTrack=v;buildTrack(v);resetCar();if(online)send({type:'configure',mode,track:trackId});}
-function selectCar(v){carId=v;applyLocalCosmetics();if(online)send({type:'select',car:carId,team});}
+async function selectCar(v){carId=v;applyLocalCosmetics();if(accountUser){const {error}=await supabase.rpc('select_vehicle',{p_vehicle_class:v});if(error)console.error(error);}if(online)send({type:'select',car:carId,team});}
 function selectTeam(v){team=v;if(online)send({type:'select',car:carId,team});}
 function startLocal(){started=true;finished=false;elapsed=0;raceStart=performance.now();resetCar();$('raceHud').style.display='flex';showPanel('');$('message').textContent='GO! 3랩을 완주하세요!';}
 function update(dt){
@@ -339,6 +339,7 @@ function saveNickname(){
  if(!value){alert('닉네임을 입력해주세요.');return;}
  if(value.length>14){alert('닉네임은 14자 이내로 입력해주세요.');return;}
  $('nickname').value=value;
+ if(accountUser)supabase.from('player_profiles').update({nickname:value,updated_at:new Date().toISOString()}).eq('user_id',accountUser.id).then(({error})=>{if(error)alert(error.message);});
  if(online)send({type:'rename',name:value});
  else if(solo)$('roster').innerHTML='<span class="roster-chip">🏎 '+escapeHtml(value)+'</span>';
 }
