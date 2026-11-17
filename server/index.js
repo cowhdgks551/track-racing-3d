@@ -74,6 +74,7 @@ wss.on('connection',ws=>{
    const mode=msg.mode==='team'?'team':'individual';
    const track=['yeongam','inje','everland','taebaek'].includes(msg.track)?msg.track:'yeongam';
    room.config={mode,track,laps:3};
+   if(mode==='individual')for(const p of room.players.values())p.team=null;
    roomState(room);
   }else if(msg.type==='select'){
    if(room.started)return;
@@ -93,9 +94,9 @@ wss.on('connection',ws=>{
    if(room.config.mode==='team'){
     const red=[...room.players.values()].filter(p=>p.team==='red').length;
     const blue=[...room.players.values()].filter(p=>p.team==='blue').length;
-    if(!red||!blue)return send(player.ws,{type:'error',message:'팀전은 레드팀과 블루팀에 각각 1명 이상 있어야 시작할 수 있습니다.'});
+    if(!red||!blue||red+blue!==room.players.size)return send(player.ws,{type:'error',message:'팀전은 모든 참가자가 레드팀 또는 블루팀을 선택해야 하며, 양 팀에 1명 이상 있어야 합니다.'});
    }
-   room.started=true;room.resultsSent=false;room.results=null;
+   room.started=true;room.startedAt=Date.now();room.resultsSent=false;room.results=null;
    for(const p of room.players.values()){p.lap=0;p.progress=0;p.finished=false;p.finishTime=null;p.x=0;p.z=0;p.ready=true;}
    broadcast(room,{type:'race-start',at:Date.now(),config:room.config});
    roomState(room);
@@ -110,7 +111,7 @@ wss.on('connection',ws=>{
    broadcast(room,{type:'players',players:publicPlayers(room)});
   }else if(msg.type==='finish'){
    if(!room.started||player.finished)return;
-   player.finished=true;player.finishTime=Number.isFinite(msg.elapsed)?Math.max(0,msg.elapsed):Date.now();
+   player.finished=true;player.finishTime=Date.now()-(room.startedAt||Date.now());
    broadcast(room,{type:'players',players:publicPlayers(room)});
    if([...room.players.values()].every(p=>p.finished))endRace(room);
   }else if(msg.type==='leave'){
