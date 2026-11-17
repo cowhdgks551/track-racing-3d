@@ -31,6 +31,7 @@ app.innerHTML=`
    <button data-car="balance" class="car-choice active"><b>04</b><span>밸런스형</span><small>전체 능력 균형</small></button>
   </div>
   <div id="teamSelect" hidden><div class="field-label">팀 선택</div><div class="segmented team-segment"><button data-team="red">🔴 레드팀</button><button data-team="blue">🔵 블루팀</button></div></div>
+  <div class="nickname-edit"><label for="nicknameEdit">내 닉네임</label><div><input class="field" id="nicknameEdit" maxlength="14" placeholder="닉네임 입력"/><button class="btn" id="saveNickname">변경</button></div></div>
   <div class="room-roster"><div><b>참가자</b><span id="rosterCount">1 / 10</span></div><div id="roster"></div></div>
   <button class="btn" id="startRace">3랩 레이스 시작</button><button class="btn secondary" id="backLobby">나가기</button>
   <p class="hint" id="hostHint">방장만 경기 설정과 시작을 진행할 수 있습니다.</p>
@@ -137,6 +138,7 @@ function applyRoom(m){
  $('startRace').textContent=myId===hostId?'3랩 레이스 시작':'방장 시작 대기 중';
  $('roominfo').innerHTML=`ROOM <b>${roomCode}</b><br>${TRACKS[trackId].short} · ${mode==='team'?'TEAM':'INDIVIDUAL'}`;
  $('rosterCount').textContent=`${players.length} / 10`;
+ $('nicknameEdit').value=self?.name||$('nickname').value.trim()||'Racer';
  $('roster').innerHTML=players.map(p=>`<span class="roster-chip ${p.team||''}">${p.team==='red'?'🔴':p.team==='blue'?'🔵':'🏎'} ${escapeHtml(p.name)} ${p.id===hostId?'★':''}</span>`).join('');
  document.querySelectorAll('[data-mode]').forEach(b=>b.classList.toggle('active',b.dataset.mode===mode));
  document.querySelectorAll('[data-track]').forEach(b=>b.classList.toggle('active',b.dataset.track===trackId));
@@ -210,6 +212,17 @@ hold('left','left');hold('right','right');hold('gas','gas');hold('brake','brake'
 addEventListener('keydown',e=>{if(['ArrowLeft','a','A'].includes(e.key))keys.left=true;if(['ArrowRight','d','D'].includes(e.key))keys.right=true;if(['ArrowUp','w','W'].includes(e.key))keys.gas=true;if(['ArrowDown','s','S'].includes(e.key))keys.brake=true;});
 addEventListener('keyup',e=>{if(['ArrowLeft','a','A'].includes(e.key))keys.left=false;if(['ArrowRight','d','D'].includes(e.key))keys.right=false;if(['ArrowUp','w','W'].includes(e.key))keys.gas=false;if(['ArrowDown','s','S'].includes(e.key))keys.brake=false;});
 $('join').onclick=()=>{if(joined)return;roomCode=$('room').value.trim().toUpperCase()||'SPEED';connect();};
+function saveNickname(){
+ const value=$('nicknameEdit').value.trim();
+ if(!value){alert('닉네임을 입력해주세요.');return;}
+ if(value.length>14){alert('닉네임은 14자 이내로 입력해주세요.');return;}
+ $('nickname').value=value;
+ if(online)send({type:'rename',name:value});
+ else if(solo)$('roster').innerHTML='<span class="roster-chip">🏎 '+escapeHtml(value)+'</span>';
+}
+$('saveNickname').onclick=saveNickname;
+$('nicknameEdit').addEventListener('keydown',e=>{if(e.key==='Enter')saveNickname();});
+
 $('solo').onclick=()=>{solo=true;joined=true;online=false;myId='local';mode='individual';showPanel('setup');setStatus('● PRACTICE');$('roominfo').textContent='PRACTICE MODE';$('roster').innerHTML='<span class="roster-chip">🏎 나</span>';$('rosterCount').textContent='1 / 1';$('hostHint').textContent='혼자 연습 모드입니다.';$('startRace').disabled=false;};
 $('backLobby').onclick=()=>{if(ws)ws.close();joined=false;solo=false;showPanel('lobby');setStatus('● OFFLINE');};
 document.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>{if(myId!==hostId&&!solo)return;setMode(b.dataset.mode);});
