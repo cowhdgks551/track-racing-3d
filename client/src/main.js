@@ -138,7 +138,7 @@ function applyRoom(m){
  $('startRace').textContent=myId===hostId?'3랩 레이스 시작':'방장 시작 대기 중';
  $('roominfo').innerHTML=`ROOM <b>${roomCode}</b><br>${TRACKS[trackId].short} · ${mode==='team'?'TEAM':'INDIVIDUAL'}`;
  $('rosterCount').textContent=`${players.length} / 10`;
- $('nicknameEdit').value=self?.name||$('nickname').value.trim()||'Racer';
+ if(document.activeElement!==$('nicknameEdit'))$('nicknameEdit').value=self?.name||$('nickname').value.trim()||'Racer';
  $('roster').innerHTML=players.map(p=>`<span class="roster-chip ${p.team||''}">${p.team==='red'?'🔴':p.team==='blue'?'🔵':'🏎'} ${escapeHtml(p.name)} ${p.id===hostId?'★':''}</span>`).join('');
  document.querySelectorAll('[data-mode]').forEach(b=>b.classList.toggle('active',b.dataset.mode===mode));
  document.querySelectorAll('[data-track]').forEach(b=>b.classList.toggle('active',b.dataset.track===trackId));
@@ -223,7 +223,7 @@ function saveNickname(){
 $('saveNickname').onclick=saveNickname;
 $('nicknameEdit').addEventListener('keydown',e=>{if(e.key==='Enter')saveNickname();});
 
-$('solo').onclick=()=>{solo=true;joined=true;online=false;myId='local';mode='individual';showPanel('setup');setStatus('● PRACTICE');$('roominfo').textContent='PRACTICE MODE';$('roster').innerHTML='<span class="roster-chip">🏎 나</span>';$('rosterCount').textContent='1 / 1';$('hostHint').textContent='혼자 연습 모드입니다.';$('startRace').disabled=false;};
+$('solo').onclick=()=>{solo=true;joined=true;online=false;myId='local';mode='individual';$('nicknameEdit').value=$('nickname').value.trim()||'Racer';showPanel('setup');setStatus('● PRACTICE');$('roominfo').textContent='PRACTICE MODE';$('roster').innerHTML='<span class="roster-chip">🏎 나</span>';$('rosterCount').textContent='1 / 1';$('hostHint').textContent='혼자 연습 모드입니다.';$('startRace').disabled=false;};
 $('backLobby').onclick=()=>{if(ws)ws.close();joined=false;solo=false;showPanel('lobby');setStatus('● OFFLINE');};
 document.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>{if(myId!==hostId&&!solo)return;setMode(b.dataset.mode);});
 document.querySelectorAll('[data-track]').forEach(b=>b.onclick=()=>{if(myId!==hostId&&!solo)return;setTrack(b.dataset.track);});
