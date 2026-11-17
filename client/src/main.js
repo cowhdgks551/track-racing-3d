@@ -216,7 +216,7 @@ function startRace(){
 function finishRace(){
  if(finished)return;finished=true;started=false;speed=0;elapsed=performance.now()-raceStart;
  $('message').textContent='FINISH! 결과를 기다리는 중';
- if(solo){showResults({mode:'individual',results:[{id:myId,name:$('nickname').value.trim()||'Racer',team:null,finished:true,rank:1,points:10,coins:10}],raceId:'solo-'+Date.now(),teams:{red:0,blue:0,winner:'draw'}});}
+ if(solo){showResults({mode:'individual',results:[{id:myId,name:$('nickname').value.trim()||'Racer',team:null,finished:true,rank:1,points:10,coins:0}],raceId:'solo-'+Date.now(),teams:{red:0,blue:0,winner:'draw'}});}
  else send({type:'finish',elapsed});
 }
 function showResults(m){
@@ -230,7 +230,7 @@ function showResults(m){
 }
 function setMode(v){mode=v;if(online)send({type:'configure',mode,track:trackId});}
 function setTrack(v){trackId=v;activeTrack=v;buildTrack(v);resetCar();if(online)send({type:'configure',mode,track:trackId});}
-function selectCar(v){carId=v;applyCarCosmetics(localCar,carId);if(online)send({type:'select',car:carId,team});}
+function selectCar(v){carId=v;applyLocalCosmetics();if(online)send({type:'select',car:carId,team});}
 function selectTeam(v){team=v;if(online)send({type:'select',car:carId,team});}
 function startLocal(){started=true;finished=false;elapsed=0;raceStart=performance.now();resetCar();$('raceHud').style.display='flex';showPanel('');$('message').textContent='GO! 3랩을 완주하세요!';}
 function update(dt){
