@@ -107,7 +107,7 @@ let lastAwardedRace=null;
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const setStatus=t=>$('connection').textContent=t;
 function send(o){if(ws&&ws.readyState===1)ws.send(JSON.stringify(o));}
-function showPanel(id){['lobby','setup','results'].forEach(k=>$(k).hidden=k!==id);}
+function showPanel(id){['lobby','setup','results','shop'].forEach(k=>$(k).hidden=k!==id);}
 function makeCar(color){
  const g=new THREE.Group(),paint=new THREE.MeshStandardMaterial({color,roughness:.35,metalness:.12}),dark=new THREE.MeshStandardMaterial({color:0x17212a,roughness:.7});
  const body=new THREE.Mesh(new THREE.BoxGeometry(2.1,.58,3.8),paint);body.position.y=.7;body.castShadow=true;g.add(body);g.userData.bodyMaterial=paint;
@@ -195,7 +195,14 @@ function updateRemoteData(list){
  players=list||players;const ids=new Set();
  for(const p of players){if(p.id===myId)continue;ids.add(p.id);let r=remotes.get(p.id);
   if(!r){r={car:makeCar(p.color||0x42a5ff),data:p};scene.add(r.car);remotes.set(p.id,r);}
-  r.data=p;r.car.visible=true;if(p.cosmetics){if(p.cosmetics.paint)r.car.userData.bodyMaterial.color.set(p.cosmetics.paint);if(p.cosmetics.decal&&!r.car.userData.decal){const mat=new THREE.MeshBasicMaterial({map:makeDecalTexture(p.cosmetics.decal),transparent:true,side:THREE.DoubleSide});const mesh=new THREE.Mesh(new THREE.PlaneGeometry(.85,.85),mat);mesh.rotation.x=-Math.PI/2;mesh.position.set(p.cosmetics.position?.x||0,.999,p.cosmetics.position?.z||0);r.car.add(mesh);r.car.userData.decal=mesh;}}
+  r.data=p;r.car.visible=true;
+  const cosmeticSig=JSON.stringify(p.cosmetics||null);
+  if(r.car.userData.cosmeticSignature!==cosmeticSig){
+   if(r.car.userData.decal){r.car.remove(r.car.userData.decal);r.car.userData.decal.material.map?.dispose();r.car.userData.decal=null;}
+   if(p.cosmetics?.paint)r.car.userData.bodyMaterial.color.set(p.cosmetics.paint);
+   if(p.cosmetics?.decal){const mat=new THREE.MeshBasicMaterial({map:makeDecalTexture(p.cosmetics.decal),transparent:true,depthWrite:false,side:THREE.DoubleSide});const mesh=new THREE.Mesh(new THREE.PlaneGeometry(.85,.85),mat);mesh.rotation.x=-Math.PI/2;mesh.rotation.z=(p.cosmetics.position?.rotation||0)*Math.PI/180;mesh.position.set(p.cosmetics.position?.x||0,.999,p.cosmetics.position?.z||0);r.car.add(mesh);r.car.userData.decal=mesh;}
+   r.car.userData.cosmeticSignature=cosmeticSig;
+  }
  }
  for(const [id,r] of remotes)if(!ids.has(id)){scene.remove(r.car);remotes.delete(id);}
  const ranked=[...players].sort((a,b)=>b.lap-a.lap||b.progress-a.progress);
