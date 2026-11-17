@@ -184,7 +184,7 @@ async function renderGarage(){
  if(!accountUser){alert('차고를 이용하려면 먼저 로그인해주세요.');showPanel('lobby');return;}
  try{await loadCloudAccount();}catch(e){alert('차고 정보를 불러오지 못했습니다: '+e.message);return;}
  $('garageCoins').textContent=wallet.coins;
- $('garageVehicles').innerHTML=cloudGarage.vehicles.map(v=>'<div class="garage-car"><b>'+({acceleration:'가속형',topSpeed:'최고속도형',cornering:'코너링형',balance:'밸런스형'}[v.vehicle_class]||v.vehicle_class)+'</b><span>'+(v.is_selected?'선택된 차량':'보유 차량')+'</span><button data-garage-car="'+v.vehicle_class+'">차량 선택</button></div>').join('');
+ $('garageVehicles').innerHTML=cloudGarage.vehicles.map(v=>'<div class="garage-car"><b>'+({acceleration:'가속형',topSpeed:'최고속도형',cornering:'코너링형',balance:'밸런스형'}[v.vehicle_class]||v.vehicle_class)+' · '+v.vehicle_grade+'</b><span>'+(v.is_selected?'선택된 차량':'보유 차량')+'</span><button data-garage-car="'+v.vehicle_class+'" data-garage-grade="'+v.vehicle_grade+'">차량 선택</button></div>').join('');
  $('garageVehicles').querySelectorAll('[data-garage-car]').forEach(b=>b.onclick=()=>{selectCar(b.dataset.garageCar);showPanel('setup');});
  $('garageInventory').innerHTML=cloudGarage.inventory.length?cloudGarage.inventory.map(v=>'<div class="garage-item"><span>'+(v.cosmetic_catalog?.item_type==='paint'?'🎨':'✦')+'</span><b>'+escapeHtml(v.cosmetic_catalog?.display_name||v.item_id)+'</b><small>'+({acceleration:'가속형',topSpeed:'최고속도형',cornering:'코너링형',balance:'밸런스형'}[v.vehicle_class])+'</small><em>'+(v.is_equipped?'장착 중':'보유')+'</em></div>').join(''):'<p class="hint">아직 구매한 페인트나 문양이 없습니다.</p>';
  const history=[...cloudGarage.transactions.map(t=>({date:t.created_at,label:t.description,amount:t.amount})),...cloudGarage.races.map(r=>({date:r.played_at,label:'레이스 · '+r.track_id+' · '+(r.finish_rank||'DNF')+'위',amount:r.coins_earned}))].sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,8);
@@ -330,7 +330,13 @@ function showResults(m){
 }
 function setMode(v){mode=v;if(online)send({type:'configure',mode,track:trackId});}
 function setTrack(v){trackId=v;activeTrack=v;buildTrack(v);resetCar();if(online)send({type:'configure',mode,track:trackId});}
-async function selectCar(v){carId=v;renderVehicleRatings();applyLocalCosmetics();if(accountUser){const {error}=await supabase.rpc('select_vehicle',{p_vehicle_class:v,p_grade:vehicleGrade});if(error)console.error(error);}if(online)send({type:'select',car:carId,grade:vehicleGrade,team});}
+async function selectCar(v){
+ carId=v;
+ if(accountUser&&!cloudGarage?.vehicles?.some(row=>row.vehicle_class===v&&row.vehicle_grade===vehicleGrade))vehicleGrade='D';
+ renderVehicleRatings();applyLocalCosmetics();
+ if(accountUser){const {error}=await supabase.rpc('select_vehicle',{p_vehicle_class:v,p_grade:vehicleGrade});if(error)console.error(error);}
+ if(online)send({type:'select',car:carId,grade:vehicleGrade,team});
+}
 function renderVehicleRatings(){
  const stats=vehicleRatings();
  const labels=[['acceleration','가속'],['topSpeed','최고속도'],['cornering','코너링']];
