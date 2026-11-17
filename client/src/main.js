@@ -266,7 +266,7 @@ function buildTrack(id){
  trackId=id;if(trackGroup)scene.remove(trackGroup);trackGroup=new THREE.Group();scene.add(trackGroup);
  const data=TRACKS[id],raw=data.points.map(([a,b])=>new THREE.Vector3(a,0,b));
  curve=new THREE.CatmullRomCurve3(raw,true,'catmullrom',.15);
- const n=320,width=10,verts=[],indices=[];
+ const n=320,width=18,verts=[],indices=[];
  for(let i=0;i<=n;i++){const p=curve.getPointAt(i/n),t=curve.getTangentAt(i/n),normal=new THREE.Vector3(-t.z,0,t.x).normalize();
   for(const s of [-1,1]){const q=p.clone().addScaledVector(normal,s*width/2);verts.push(q.x,.02,q.z);}
   if(i<n){const k=i*2;indices.push(k,k+1,k+2,k+1,k+3,k+2);}
@@ -293,9 +293,9 @@ function buildTrack(id){
  for(let i=0;i<160;i++){
   const t=i/160,p=curve.getPointAt(t),tangent=curve.getTangentAt(t),normal=new THREE.Vector3(-tangent.z,0,tangent.x).normalize(),rot=-Math.atan2(tangent.z,tangent.x);
   for(const side of [-1,1]){
-   const edge=p.clone().addScaledVector(normal,side*5.15);
+   const edge=p.clone().addScaledVector(normal,side*9.15);
    addBox(.78,.12,1.05,i%6<3?curbRed:curbWhite,edge.x,.12,edge.z,rot);
-   if(i%3===0){const b=p.clone().addScaledVector(normal,side*8.2);addBox(.18,.9,2.4,barrierMat,b.x,.55,b.z,rot);}
+   if(i%3===0){const b=p.clone().addScaledVector(normal,side*12.2);addBox(.18,.9,2.4,barrierMat,b.x,.55,b.z,rot);}
   }
  }
  // Deterministic placement keeps every player's scenery consistent.
@@ -321,12 +321,12 @@ function buildTrack(id){
  }
  // Simple scenery markers
  const postMat=new THREE.MeshStandardMaterial({color:0xf6f0df});
- for(let i=0;i<24;i++){const p=curve.getPointAt(i/24),t=curve.getTangentAt(i/24),nn=new THREE.Vector3(-t.z,0,t.x).normalize();p.addScaledVector(nn,sideSign(i)*13);const post=new THREE.Mesh(new THREE.BoxGeometry(.5,1.8,.5),postMat);post.position.set(p.x,.9,p.z);trackGroup.add(post);}
+ for(let i=0;i<24;i++){const p=curve.getPointAt(i/24),t=curve.getTangentAt(i/24),nn=new THREE.Vector3(-t.z,0,t.x).normalize();p.addScaledVector(nn,sideSign(i)*17);const post=new THREE.Mesh(new THREE.BoxGeometry(.5,1.8,.5),postMat);post.position.set(p.x,.9,p.z);trackGroup.add(post);}
 }
 function sideSign(i){return i%2?1:-1;}
 function nearest(px,pz){let best=0,dist=Infinity;for(let i=0;i<400;i++){const p=curve.getPointAt(i/400),d=(p.x-px)**2+(p.z-pz)**2;if(d<dist){dist=d;best=i/400;}}return {progress:best,dist:Math.sqrt(dist),point:curve.getPointAt(best)};}
 function resetCar(){
- lateralVelocity=0;yawVelocity=0;steeringAngle=0;
+ lateralVelocity=0;yawVelocity=0;steeringAngle=0;physicsAccumulator=0;
  const p=curve.getPointAt(.005),t=curve.getTangentAt(.005);x=p.x;z=p.z;heading=Math.atan2(t.x,t.z);speed=0;lap=0;progress=.005;lastProgress=.005;finished=false;localCar.position.set(x,0,z);localCar.rotation.y=heading;
  $('lap').textContent='0 / 3';$('time').textContent='00:00.0';$('position').textContent='-';
 }
@@ -467,30 +467,55 @@ async function saveTimeAttackRecord(){
 }
 
 function startLocal(){started=true;finished=false;elapsed=0;raceStart=performance.now();resetCar();showPanel('');$('message').textContent='GO! 3랩을 완주하세요!';}
+// Fixed-step dynamic bicycle simulation: front/rear slip angles, saturated tyre forces,
+// independent lateral velocity and yaw inertia. Handbrake sharply reduces rear traction.
+const vehiclePhysics={mass:1280,inertia:2050,lf:1.25,lr:1.40,cornerFront:68000,cornerRear:76000};
+let physicsAccumulator=0;
+function stepVehicle(dt,stats){
+ const steerInput=(keys.left?1:0)-(keys.right?1:0);
+ const drift=keys.drift&&Math.abs(speed)>5;
+ const maxSteer=.52/(1+Math.abs(speed)*.012);
+ steeringAngle+=(steerInput*maxSteer-steeringAngle)*Math.min(1,dt*9);
+ const throttle=keys.gas?1:0,reverse=keys.reverse?1:0;
+ const engine=throttle*stats.accel*vehiclePhysics.mass*.42;
+ const reverseForce=reverse*stats.accel*vehiclePhysics.mass*.31;
+ const drag=19*speed+1.2*speed*Math.abs(speed);
+ let drive=engine-reverseForce-drag;
+ if(drift)drive-=Math.sign(speed)*Math.min(1800,Math.abs(speed)*75);
+ const v=Math.max(2,Math.abs(speed));
+ const {mass,inertia,lf,lr,cornerFront,cornerRear}=vehiclePhysics;
+ const frontSlip=Math.atan2(lateralVelocity+lf*yawVelocity,v)-steeringAngle;
+ const rearSlip=Math.atan2(lateralVelocity-lr*yawVelocity,v);
+ const grip=clamp(stats.grip,.65,1.3);
+ const frontLimit=mass*9.81*.56*grip;
+ const rearLimit=mass*9.81*.56*grip*(drift?.23:1);
+ const fyFront=clamp(-cornerFront*frontSlip,-frontLimit,frontLimit);
+ const fyRear=clamp(-cornerRear*rearSlip,-rearLimit,rearLimit);
+ const yawAccel=(lf*fyFront*Math.cos(steeringAngle)-lr*fyRear)/inertia;
+ const lateralAccel=(fyFront*Math.cos(steeringAngle)+fyRear)/mass-speed*yawVelocity;
+ const longAccel=drive/mass+fyFront*Math.sin(steeringAngle)/mass;
+ yawVelocity=clamp(yawVelocity+yawAccel*dt,-2.8,2.8);
+ lateralVelocity=clamp(lateralVelocity+lateralAccel*dt,-Math.max(4,v*.95),Math.max(4,v*.95));
+ speed=clamp(speed+longAccel*dt,-stats.max*.30,stats.max);
+ if(Math.abs(speed)<.12&&!throttle&&!reverse)speed=0;
+ if(Math.abs(speed)<2){yawVelocity*=Math.exp(-dt*4);lateralVelocity*=Math.exp(-dt*5);}
+ heading+=yawVelocity*dt;
+ x+=(Math.sin(heading)*speed+Math.cos(heading)*lateralVelocity)*dt;
+ z+=(Math.cos(heading)*speed-Math.sin(heading)*lateralVelocity)*dt;
+ const near=nearest(x,z);
+ if(near.dist>9.5){speed*=Math.exp(-dt*.95);lateralVelocity*=Math.exp(-dt*1.7);}
+ if(near.dist>20){x=near.point.x;z=near.point.z;speed*=.18;lateralVelocity=0;yawVelocity=0;}
+ return near;
+}
 function update(dt){
  const stats=getVehicleStats(carId,vehicleGrade);
  if(started){
-  // Bicycle-model steering with speed-sensitive steering, yaw inertia and lateral tyre grip.
-  const steerInput=(keys.left?1:0)-(keys.right?1:0);
-  const targetSteer=steerInput*(keys.drift?.57:.47)/(1+Math.abs(speed)*.014);
-  steeringAngle+= (targetSteer-steeringAngle)*Math.min(1,dt*8);
-  const engineForce=keys.gas?stats.accel:0;
-  const reverseForce=keys.reverse?stats.accel*.65:0;
-  const drag=.014*Math.abs(speed)+.0035*speed*speed;
-  speed=clamp(speed+(engineForce-reverseForce-Math.sign(speed)*drag)*dt,-stats.max*.30,stats.max);
-  if(!keys.gas&&!keys.reverse&&Math.abs(speed)<.08)speed=0;
-  const drifting=keys.drift&&Math.abs(speed)>4;
-  if(drifting)speed*=Math.pow(.994,dt*60);
-  const desiredYaw=speed*Math.tan(steeringAngle)/wheelBase;
-  const grip=clamp(stats.grip,.65,1.3);
-  yawVelocity+=(desiredYaw-yawVelocity)*Math.min(1,dt*(drifting?1.55:2.6+grip*3.4));
-  const slipTarget=clamp((desiredYaw-yawVelocity)*Math.abs(speed)*(drifting?.42:.12),-Math.abs(speed)*(drifting?.68:.26),Math.abs(speed)*(drifting?.68:.26));
-  lateralVelocity+=(slipTarget-lateralVelocity)*Math.min(1,dt*(drifting?1.15:3.5+grip*4));
-  heading+=yawVelocity*dt;
-  x+=(Math.sin(heading)*speed+Math.cos(heading)*lateralVelocity)*dt;
-  z+=(Math.cos(heading)*speed-Math.sin(heading)*lateralVelocity)*dt;
-  const near=nearest(x,z);if(near.dist>5.5){speed*=Math.pow(.976,dt*60);lateralVelocity*=Math.pow(.88,dt*60);}
-  if(near.dist>13){x=near.point.x;z=near.point.z;speed*=.25;lateralVelocity=0;yawVelocity=0;}
+  physicsAccumulator+=dt;
+  let near=nearest(x,z),steps=0;
+  while(physicsAccumulator>=1/120&&steps<6){
+   near=stepVehicle(1/120,stats);physicsAccumulator-=1/120;steps++;
+  }
+  if(steps===6)physicsAccumulator=0;
   const p=near.progress;
   if(lastProgress>.88&&p<.12&&speed>2.5){lap++;$('lap').textContent=`${lap} / 3`;lastProgress=p;if(lap>=3)finishRace();}
   else if(p>lastProgress-.12)lastProgress=p;
