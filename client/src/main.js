@@ -86,12 +86,25 @@ const TRACKS={
  everland:{name:'에버랜드 스피드웨이',short:'EVERLAND SPEEDWAY',color:0x3c454b,points:[[-42,-9],[-35,-25],[-20,-30],[-4,-28],[14,-25],[33,-19],[43,-7],[41,6],[30,16],[15,18],[5,12],[-4,19],[-18,25],[-32,17],[-44,7]]},
  taebaek:{name:'태백 스피드웨이',short:'TAEBAEK SPEEDWAY',color:0x3c454b,points:[[-38,-8],[-34,-24],[-18,-30],[2,-27],[23,-20],[38,-10],[40,4],[28,13],[15,9],[8,20],[-6,28],[-23,23],[-36,12]]}
 };
-const CLASSES={
- acceleration:{label:'가속형',max:31,accel:28,turn:1.65,grip:.9},
- topSpeed:{label:'최고속도형',max:39,accel:19,turn:1.25,grip:.82},
- cornering:{label:'코너링형',max:29,accel:21,turn:2.25,grip:1.18},
- balance:{label:'밸런스형',max:34,accel:23,turn:1.8,grip:1}
+
+const GRADE_PEAK={D:60,C:65,B:70,A:75};
+const CLASS_RATIOS={
+ acceleration:{label:'가속형',acceleration:1,topSpeed:.90,cornering:.70},
+ topSpeed:{label:'최고속도형',acceleration:.82,topSpeed:1,cornering:.65},
+ cornering:{label:'코너링형',acceleration:.80,topSpeed:.87,cornering:1},
+ balance:{label:'밸런스형',acceleration:1,topSpeed:1,cornering:1}
 };
+let vehicleGrade='D',timeAttackMode=false;
+function vehicleRatings(type=carId,grade=vehicleGrade){
+ const peak=GRADE_PEAK[grade]||60,ratio=CLASS_RATIOS[type]||CLASS_RATIOS.balance;
+ return {acceleration:Math.round(peak*ratio.acceleration),topSpeed:Math.round(peak*ratio.topSpeed),cornering:Math.round(peak*ratio.cornering)};
+}
+function getVehicleStats(type=carId,grade=vehicleGrade){
+ const r=vehicleRatings(type,grade);
+ return {label:CLASS_RATIOS[type].label,max:r.topSpeed*.65,accel:r.acceleration*.47,turn:r.cornering*.03,grip:r.cornering/60,ratings:r};
+}
+
+const CLASSES=new Proxy({}, {get:(_t,k)=>getVehicleStats(k,vehicleGrade)});
 let scene,camera,renderer,curve,localCar,ground,trackGroup;
 let ws=null,myId=null,roomCode='',online=false,joined=false,hostId=null;
 let mode='individual',trackId='yeongam',carId='balance',team=null,players=[];
@@ -138,9 +151,9 @@ function renderShop(){updateWalletUI();document.querySelectorAll('[data-shopcar]
 function makeDecalTexture(id){const item=DECALS.find(d=>d.id===id);const c=document.createElement('canvas');c.width=256;c.height=256;const ctx=c.getContext('2d');ctx.clearRect(0,0,256,256);ctx.fillStyle='#ffffff';ctx.strokeStyle='#ffffff';ctx.textAlign='center';ctx.textBaseline='middle';ctx.font='bold 190px Arial';ctx.shadowColor='#111827';ctx.shadowBlur=5;ctx.fillText(item?.glyph||'★',128,132);const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;return t;}
 function applyCarCosmetics(car,type){if(!car)return;const paint=car.userData.bodyMaterial;if(paint)paint.color.set(currentPaint(type));if(car.userData.decal){car.remove(car.userData.decal);car.userData.decal.material.map?.dispose();}const e=carInventory(type);if(e.decal){const mat=new THREE.MeshBasicMaterial({map:makeDecalTexture(e.decal),transparent:true,depthWrite:false,side:THREE.DoubleSide});const mesh=new THREE.Mesh(new THREE.PlaneGeometry(.85,.85),mat);mesh.rotation.x=-Math.PI/2;mesh.rotation.z=(e.position.rotation||0)*Math.PI/180;mesh.position.set(e.position.x,.999,e.position.z);car.add(mesh);car.userData.decal=mesh;} }
 function applyLocalCosmetics(){applyCarCosmetics(localCar,carId);send({type:'cosmetics',cosmetics:cosmeticsFor(carId)});}
-async async function awardRaceCoins(m){const result=m.results?.find(r=>r.id===myId);if(!result||m.raceId===lastAwardedRace)return;lastAwardedRace=m.raceId||('local-'+Date.now());if(accountUser&&m.raceId){const teamResult=m.teams?.winner==='draw'?'draw':result.team===m.teams?.winner?'win':'loss';const {data,error}=await supabase.rpc('claim_race_reward',{p_race_id:m.raceId,p_mode:m.mode,p_track_id:trackId,p_vehicle_class:carId,p_finish_rank:result.rank||null,p_finished:!!result.finished,p_team_id:result.team||null,p_team_result:teamResult});if(error){$('message').textContent='보상 저장 실패: '+error.message;return;}wallet.coins=data.balance??wallet.coins;await loadCloudAccount();}else grantCoins(result.coins||0);$('message').textContent='레이스 보상 +' +(result.coins||0)+' 코인';}
+async function awardRaceCoins(m){const result=m.results?.find(r=>r.id===myId);if(!result||m.raceId===lastAwardedRace)return;lastAwardedRace=m.raceId||('local-'+Date.now());if(accountUser&&m.raceId){const teamResult=m.teams?.winner==='draw'?'draw':result.team===m.teams?.winner?'win':'loss';const {data,error}=await supabase.rpc('claim_race_reward',{p_race_id:m.raceId,p_mode:m.mode,p_track_id:trackId,p_vehicle_class:carId,p_finish_rank:result.rank||null,p_finished:!!result.finished,p_team_id:result.team||null,p_team_result:teamResult});if(error){$('message').textContent='보상 저장 실패: '+error.message;return;}wallet.coins=data.balance??wallet.coins;await loadCloudAccount();}else grantCoins(result.coins||0);$('message').textContent='레이스 보상 +' +(result.coins||0)+' 코인';}
 let lastAwardedRace=null;
-async async async function loadCloudAccount(){
+async function loadCloudAccount(){
  if(!accountUser)return;
  const uid=accountUser.id;
  const [profile,walletRow,vehicles,inventory,tx,races]=await Promise.all([
@@ -167,7 +180,7 @@ async async async function loadCloudAccount(){
  if(profile.data?.nickname)$('nickname').value=profile.data.nickname;
  if(localCar)applyLocalCosmetics();
 }
-async async async function renderGarage(){
+async function renderGarage(){
  if(!accountUser){alert('차고를 이용하려면 먼저 로그인해주세요.');showPanel('lobby');return;}
  try{await loadCloudAccount();}catch(e){alert('차고 정보를 불러오지 못했습니다: '+e.message);return;}
  $('garageCoins').textContent=wallet.coins;
