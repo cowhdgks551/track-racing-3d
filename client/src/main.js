@@ -255,7 +255,7 @@ function resetCar(){
  $('lap').textContent='0 / 3';$('time').textContent='00:00.0';$('position').textContent='-';
 }
 function connect(){
- const proto=location.protocol==='https:'?'wss':'ws';ws=new WebSocket(`${proto}://${location.host}/ws`);
+ const configuredServer=import.meta.env.VITE_GAME_SERVER_URL;const proto=location.protocol==='https:'?'wss':'ws';const socketBase=configuredServer?configuredServer.replace(/^http/,'ws').replace(/\\/$/,''):`${proto}://${location.host}`;ws=new WebSocket(`${socketBase}/ws`);
  ws.onopen=()=>send({type:'join',name:$('nickname').value.trim()||'Racer',room:$('room').value.trim()||'SPEED',car:carId,team,cosmetics:cosmeticsFor(carId)});
  ws.onmessage=e=>{const m=JSON.parse(e.data);
   if(m.type==='joined'){myId=m.id;online=true;joined=true;setStatus('● ONLINE');}
