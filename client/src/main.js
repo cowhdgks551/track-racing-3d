@@ -403,7 +403,7 @@ function update(dt){
  localCar.position.set(x,0,z);localCar.rotation.y=heading;
  for(const r of remotes.values()){const d=r.data;r.car.position.lerp(new THREE.Vector3(d.x,0,d.z),.28);r.car.rotation.y=d.rotation;}
 }
-function formatTime(ms){const s=ms/1000;return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(Math.floor(s%60)).padStart(2,'0')}.${Math.floor(s%1*10)}`;}
+function formatTime(ms){const s=ms/1000;return String(Math.floor(s/60)).padStart(2,'0')+':'+String(Math.floor(s%60)).padStart(2,'0')+'.'+Math.floor(s%1*10);}
 function animate(){requestAnimationFrame(animate);const dt=Math.min(clock.getDelta(),.04);if(joined)update(dt);
  const target=new THREE.Vector3(x,0,z),behind=new THREE.Vector3(-Math.sin(heading)*13,8,-Math.cos(heading)*13);
  camera.position.lerp(target.clone().add(behind),.09);camera.lookAt(target.clone().add(new THREE.Vector3(0,1,0)));renderer.render(scene,camera);}
