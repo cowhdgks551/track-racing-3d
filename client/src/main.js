@@ -276,10 +276,10 @@ function applyRoom(m){
  $('hostHint').textContent=myId===hostId?'방장입니다. 설정을 선택하고 레이스를 시작하세요.':'방장이 레이스를 시작할 때까지 기다려주세요.';
  $('startRace').disabled=myId!==hostId;
  $('startRace').textContent=myId===hostId?'3랩 레이스 시작':'방장 시작 대기 중';
- $('roominfo').innerHTML=`ROOM <b>${roomCode}</b><br>${TRACKS[trackId].short} · ${mode==='team'?'TEAM':'INDIVIDUAL'}`;
- $('rosterCount').textContent=`${players.length} / 10`;
+ $('roominfo').innerHTML='ROOM <b>'+escapeHtml(roomCode)+'</b><br>'+TRACKS[trackId].short+' · '+(mode==='team'?'TEAM':'INDIVIDUAL');
+ $('rosterCount').textContent=String(players.length)+' / 10';
  if(document.activeElement!==$('nicknameEdit'))$('nicknameEdit').value=self?.name||$('nickname').value.trim()||'Racer';
- $('roster').innerHTML=players.map(p=>`<span class="roster-chip ${p.team||''}">${p.team==='red'?'🔴':p.team==='blue'?'🔵':'🏎'} ${escapeHtml(p.name)} ${p.id===hostId?'★':''}</span>`).join('');
+ $('roster').innerHTML=players.map(p=>'<span class="roster-chip '+(p.team||'')+'">'+(p.team==='red'?'🔴':p.team==='blue'?'🔵':'🏎')+' '+escapeHtml(p.name)+' '+(p.id===hostId?'★':'')+'</span>').join('');
  document.querySelectorAll('[data-mode]').forEach(b=>b.classList.toggle('active',b.dataset.mode===mode));
  document.querySelectorAll('[data-track]').forEach(b=>b.classList.toggle('active',b.dataset.track===trackId));
  document.querySelectorAll('[data-car]').forEach(b=>b.classList.toggle('active',b.dataset.car===carId));
