@@ -326,7 +326,7 @@ function buildTrack(id){
 function sideSign(i){return i%2?1:-1;}
 function nearest(px,pz){let best=0,dist=Infinity;for(let i=0;i<400;i++){const p=curve.getPointAt(i/400),d=(p.x-px)**2+(p.z-pz)**2;if(d<dist){dist=d;best=i/400;}}return {progress:best,dist:Math.sqrt(dist),point:curve.getPointAt(best)};}
 function resetCar(){
- lateralVelocity=0;yawVelocity=0;steeringAngle=0;physicsAccumulator=0;
+ lateralVelocity=0;yawVelocity=0;steeringAngle=0;physicsAccumulator=0;driftAngle=0;driftDirection=0;wasDrifting=false;
  const p=curve.getPointAt(.005),t=curve.getTangentAt(.005);x=p.x;z=p.z;heading=Math.atan2(t.x,t.z);speed=0;lap=0;progress=.005;lastProgress=.005;finished=false;localCar.position.set(x,0,z);localCar.rotation.y=heading;
  $('lap').textContent='0 / 3';$('time').textContent='00:00.0';$('position').textContent='-';
 }
@@ -471,40 +471,52 @@ function startLocal(){started=true;finished=false;elapsed=0;raceStart=performanc
 // independent lateral velocity and yaw inertia. Handbrake sharply reduces rear traction.
 const vehiclePhysics={mass:1280,inertia:2050,lf:1.25,lr:1.40,cornerFront:68000,cornerRear:76000};
 let physicsAccumulator=0;
+// Kart-style arcade drift: deliberate yaw, trailing velocity and guaranteed speed loss.
+// Inspired by the control feel of classic kart racers; not their proprietary physics.
+let driftAngle=0,driftDirection=0,wasDrifting=false;
 function stepVehicle(dt,stats){
  const steerInput=(keys.left?1:0)-(keys.right?1:0);
- const drift=keys.drift&&Math.abs(speed)>5;
- const maxSteer=.52/(1+Math.abs(speed)*.012);
- steeringAngle+=(steerInput*maxSteer-steeringAngle)*Math.min(1,dt*9);
+ const activeDrift=keys.drift&&speed>5;
+ const justStarted=activeDrift&&!wasDrifting;
+ if(justStarted){
+  driftDirection=steerInput||Math.sign(steeringAngle)||1;
+  driftAngle=0;
+ }
+ if(!activeDrift&&wasDrifting)driftDirection=0;
+ wasDrifting=activeDrift;
+ const maxSteer=.42/(1+Math.abs(speed)*.009);
+ steeringAngle+=(steerInput*maxSteer-steeringAngle)*Math.min(1,dt*10);
  const throttle=keys.gas?1:0,reverse=keys.reverse?1:0;
- const engine=throttle*stats.accel*vehiclePhysics.mass*.42;
- const reverseForce=reverse*stats.accel*vehiclePhysics.mass*.31;
- const drag=19*speed+1.2*speed*Math.abs(speed);
- let drive=engine-reverseForce-drag;
- if(drift)drive-=Math.sign(speed)*Math.min(1800,Math.abs(speed)*75);
- const v=Math.max(2,Math.abs(speed));
- const {mass,inertia,lf,lr,cornerFront,cornerRear}=vehiclePhysics;
- const frontSlip=Math.atan2(lateralVelocity+lf*yawVelocity,v)-steeringAngle;
- const rearSlip=Math.atan2(lateralVelocity-lr*yawVelocity,v);
+ const engine=throttle*stats.accel*.40;
+ const back=reverse*stats.accel*.33;
+ const resistance=.22+.012*Math.abs(speed)+.002*speed*speed;
+ // Drift has a hard speed-loss budget even at full throttle.
+ const driftLoss=activeDrift?(5.5+.14*Math.max(0,speed)):0;
+ const acceleration=engine-back-Math.sign(speed)*(resistance+driftLoss);
+ speed=clamp(speed+acceleration*dt,-stats.max*.30,stats.max);
+ if(!throttle&&!reverse&&Math.abs(speed)<.15)speed=0;
  const grip=clamp(stats.grip,.65,1.3);
- const frontLimit=mass*9.81*.56*grip;
- const rearLimit=mass*9.81*.56*grip*(drift?.23:1);
- const fyFront=clamp(-cornerFront*frontSlip,-frontLimit,frontLimit);
- const fyRear=clamp(-cornerRear*rearSlip,-rearLimit,rearLimit);
- const yawAccel=(lf*fyFront*Math.cos(steeringAngle)-lr*fyRear)/inertia;
- const lateralAccel=(fyFront*Math.cos(steeringAngle)+fyRear)/mass-speed*yawVelocity;
- const longAccel=drive/mass+fyFront*Math.sin(steeringAngle)/mass;
- yawVelocity=clamp(yawVelocity+yawAccel*dt,-2.8,2.8);
- lateralVelocity=clamp(lateralVelocity+lateralAccel*dt,-Math.max(4,v*.95),Math.max(4,v*.95));
- speed=clamp(speed+longAccel*dt,-stats.max*.30,stats.max);
- if(Math.abs(speed)<.12&&!throttle&&!reverse)speed=0;
- if(Math.abs(speed)<2){yawVelocity*=Math.exp(-dt*4);lateralVelocity*=Math.exp(-dt*5);}
+ const ordinaryYaw=speed*Math.tan(steeringAngle)/wheelBase*.48;
+ // A held drift rotates the nose substantially, while velocity trails behind.
+ const driftYaw=driftDirection*(.72+Math.min(Math.abs(speed),36)*.023)
+                 +steerInput*.24;
+ const targetYaw=activeDrift?driftYaw:ordinaryYaw;
+ yawVelocity+=(targetYaw-yawVelocity)*Math.min(1,dt*(activeDrift?6.5:7.5*grip));
+ if(activeDrift){
+  driftAngle=clamp(driftAngle+dt*(.8+.012*Math.abs(speed)),0,.72);
+  // Velocity vector lags behind the nose: visible side-slip in corners.
+  const sideTarget=-driftDirection*Math.abs(speed)*Math.sin(driftAngle);
+  lateralVelocity+=(sideTarget-lateralVelocity)*Math.min(1,dt*4.5);
+ }else{
+  driftAngle=Math.max(0,driftAngle-dt*2.4);
+  lateralVelocity*=Math.exp(-dt*(5+grip*2));
+ }
  heading+=yawVelocity*dt;
  x+=(Math.sin(heading)*speed+Math.cos(heading)*lateralVelocity)*dt;
  z+=(Math.cos(heading)*speed-Math.sin(heading)*lateralVelocity)*dt;
  const near=nearest(x,z);
- if(near.dist>9.5){speed*=Math.exp(-dt*.95);lateralVelocity*=Math.exp(-dt*1.7);}
- if(near.dist>20){x=near.point.x;z=near.point.z;speed*=.18;lateralVelocity=0;yawVelocity=0;}
+ if(near.dist>9.5){speed*=Math.exp(-dt*1.25);lateralVelocity*=Math.exp(-dt*2);}
+ if(near.dist>20){x=near.point.x;z=near.point.z;speed*=.15;lateralVelocity=0;yawVelocity=0;driftAngle=0;}
  return near;
 }
 function update(dt){
