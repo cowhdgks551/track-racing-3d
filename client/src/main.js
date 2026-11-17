@@ -18,7 +18,7 @@ app.innerHTML=`
    <p class="hint" id="accountMessage">로그인하면 코인과 차고가 계정에 안전하게 저장됩니다.</p>
   </div>
   <div class="setup-grid"><label>닉네임<input class="field" id="nickname" maxlength="14" value="Racer"/></label><label>방 코드<input class="field" id="room" maxlength="8" value="SPEED"/></label></div>
-  <button class="btn" id="join">온라인 방 만들기 / 입장</button><button class="btn secondary" id="solo">혼자 연습하기</button>
+  <button class="btn" id="join">온라인 방 만들기 / 입장</button><button class="btn secondary" id="solo">혼자 연습하기</button><button class="btn secondary" id="timeAttack">⏱ 타임어택 도전</button>
   <p class="hint">온라인 최대 10명 · 3랩 · 팀전은 5대5</p>
  </section>
  <section class="panel setup-panel" id="setup" hidden>
@@ -43,7 +43,7 @@ app.innerHTML=`
    <button data-grade="B" class="grade-choice"><b>B</b><small>최고 70</small></button>
    <button data-grade="A" class="grade-choice"><b>A</b><small>최고 75</small></button>
   </div>
-  <div class="vehicle-stat-panel" id="vehicleStats"></div>
+  <div class="vehicle-stat-panel" id="vehicleStats"></div><div class="field-label">차량 구매 · 등급별 독립 차량</div><div id="vehicleShop" class="vehicle-shop"></div><div class="field-label">타임어택 기록실</div><div id="timeAttackBoard" class="time-attack-board"><button class="btn secondary" id="refreshRecords">기록 불러오기</button></div>
   <div id="teamSelect" hidden><div class="field-label">팀 선택</div><div class="segmented team-segment"><button data-team="red">🔴 레드팀</button><button data-team="blue">🔵 블루팀</button></div></div>
   <div class="nickname-edit"><label for="nicknameEdit">내 닉네임</label><div><input class="field" id="nicknameEdit" maxlength="14" placeholder="닉네임 입력"/><button class="btn" id="saveNickname">변경</button></div></div>
   <div class="room-roster"><div><b>참가자</b><span id="rosterCount">1 / 10</span></div><div id="roster"></div></div>
@@ -140,7 +140,7 @@ function applyCarCosmetics(car,type){if(!car)return;const paint=car.userData.bod
 function applyLocalCosmetics(){applyCarCosmetics(localCar,carId);send({type:'cosmetics',cosmetics:cosmeticsFor(carId)});}
 async async function awardRaceCoins(m){const result=m.results?.find(r=>r.id===myId);if(!result||m.raceId===lastAwardedRace)return;lastAwardedRace=m.raceId||('local-'+Date.now());if(accountUser&&m.raceId){const teamResult=m.teams?.winner==='draw'?'draw':result.team===m.teams?.winner?'win':'loss';const {data,error}=await supabase.rpc('claim_race_reward',{p_race_id:m.raceId,p_mode:m.mode,p_track_id:trackId,p_vehicle_class:carId,p_finish_rank:result.rank||null,p_finished:!!result.finished,p_team_id:result.team||null,p_team_result:teamResult});if(error){$('message').textContent='보상 저장 실패: '+error.message;return;}wallet.coins=data.balance??wallet.coins;await loadCloudAccount();}else grantCoins(result.coins||0);$('message').textContent='레이스 보상 +' +(result.coins||0)+' 코인';}
 let lastAwardedRace=null;
-async async function loadCloudAccount(){
+async async async function loadCloudAccount(){
  if(!accountUser)return;
  const uid=accountUser.id;
  const [profile,walletRow,vehicles,inventory,tx,races]=await Promise.all([
@@ -167,7 +167,7 @@ async async function loadCloudAccount(){
  if(profile.data?.nickname)$('nickname').value=profile.data.nickname;
  if(localCar)applyLocalCosmetics();
 }
-async async function renderGarage(){
+async async async function renderGarage(){
  if(!accountUser){alert('차고를 이용하려면 먼저 로그인해주세요.');showPanel('lobby');return;}
  try{await loadCloudAccount();}catch(e){alert('차고 정보를 불러오지 못했습니다: '+e.message);return;}
  $('garageCoins').textContent=wallet.coins;
@@ -297,6 +297,7 @@ function startRace(){
 }
 function finishRace(){
  if(finished)return;finished=true;started=false;speed=0;elapsed=performance.now()-raceStart;
+ if(timeAttackMode){saveTimeAttackRecord();$('message').textContent='타임어택 완주! '+formatTime(elapsed);showPanel('setup');$('raceHud').style.display='none';return;}
  $('message').textContent='FINISH! 결과를 기다리는 중';
  if(solo){showResults({mode:'individual',results:[{id:myId,name:$('nickname').value.trim()||'Racer',team:null,finished:true,rank:1,points:10,coins:0}],raceId:'solo-'+Date.now(),teams:{red:0,blue:0,winner:'draw'}});}
  else send({type:'finish',elapsed});
@@ -328,6 +329,35 @@ async function selectGrade(grade){
  if(online)send({type:'select',car:carId,grade,team});
 }
 function selectTeam(v){team=v;if(online)send({type:'select',car:carId,team});}
+
+function renderVehicleShop(){
+ const names={acceleration:'가속형',topSpeed:'최고속도형',cornering:'코너링형',balance:'밸런스형'};
+ const owned=new Set((cloudGarage?.vehicles||[]).map(v=>v.vehicle_class+'-'+v.vehicle_grade));
+ $('vehicleShop').innerHTML=['D','C','B','A'].map(g=>['acceleration','topSpeed','cornering','balance'].map(t=>{
+  const price={D:0,C:50,B:70,A:100}[g],key=t+'-'+g,has=owned.has(key)||g==='D';
+  return '<div class="vehicle-shop-item"><b>'+names[t]+' · '+g+'</b><small>'+Object.entries(vehicleRatings(t,g)).map(([k,v])=>({acceleration:'가속',topSpeed:'최고속도',cornering:'코너링'}[k])+' '+v).join(' / ')+'</small><button data-vehicle-buy="'+key+'" '+(has?'disabled':'')+'>'+(has?'보유 중':price+' 코인 구매')+'</button></div>';
+ }).join('')).join('');
+ $('vehicleShop').querySelectorAll('[data-vehicle-buy]').forEach(b=>b.onclick=async()=>{
+  if(!accountUser)return alert('차량 구매는 로그인 후 이용할 수 있습니다.');
+  const [type,grade]=b.dataset.vehicleBuy.split('-');
+  const {error}=await supabase.rpc('purchase_vehicle',{p_vehicle_class:type,p_grade:grade});
+  if(error)return alert(error.message);
+  await loadCloudAccount();renderVehicleShop();alert(grade+'등급 차량을 차고에 추가했어요!');
+ });
+}
+async function loadTimeAttackBoard(){
+ const {data,error}=await supabase.from('time_attack_records').select('nickname,track_id,vehicle_class,vehicle_grade,time_ms,created_at').eq('track_id',trackId).order('time_ms',{ascending:true}).limit(10);
+ if(error){$('timeAttackBoard').textContent='기록을 불러오지 못했습니다.';return;}
+ $('timeAttackBoard').innerHTML='<div class="leaderboard-head">'+TRACKS[trackId].name+' · TOP 10</div>'+((data||[]).length?data.map((r,i)=>'<div class="record-row"><b>'+(i+1)+'</b><span>'+escapeHtml(r.nickname)+'<small>'+({acceleration:'가속형',topSpeed:'최고속도형',cornering:'코너링형',balance:'밸런스형'}[r.vehicle_class])+' '+r.vehicle_grade+'</small></span><strong>'+formatTime(r.time_ms)+'</strong></div>').join(''):'<p class="hint">아직 등록된 기록이 없습니다. 첫 기록에 도전하세요!</p>');
+}
+async function saveTimeAttackRecord(){
+ if(!accountUser){$('message').textContent='기록 등록은 로그인 후 가능합니다.';return;}
+ const nickname=$('nickname').value.trim()||'Racer';
+ const {error}=await supabase.from('time_attack_records').insert({user_id:accountUser.id,nickname,track_id:trackId,vehicle_class:carId,vehicle_grade:vehicleGrade,lap_count:3,time_ms:Math.round(elapsed)});
+ if(error){$('message').textContent='기록 저장 실패: '+error.message;return;}
+ $('message').textContent='기록 등록 완료! '+formatTime(elapsed);await loadTimeAttackBoard();
+}
+
 function startLocal(){started=true;finished=false;elapsed=0;raceStart=performance.now();resetCar();$('raceHud').style.display='flex';showPanel('');$('message').textContent='GO! 3랩을 완주하세요!';}
 function update(dt){
  const stats=getVehicleStats(carId,vehicleGrade),accel=keys.gas?stats.accel:0,brake=keys.brake?34:0;
@@ -369,17 +399,19 @@ function saveNickname(){
 $('saveNickname').onclick=saveNickname;
 $('nicknameEdit').addEventListener('keydown',e=>{if(e.key==='Enter')saveNickname();});
 
-$('solo').onclick=()=>{solo=true;joined=true;online=false;myId='local';mode='individual';$('nicknameEdit').value=$('nickname').value.trim()||'Racer';showPanel('setup');setStatus('● PRACTICE');$('roominfo').textContent='PRACTICE MODE';$('roster').innerHTML='<span class="roster-chip">🏎 나</span>';$('rosterCount').textContent='1 / 1';$('hostHint').textContent='혼자 연습 모드입니다.';$('startRace').disabled=false;};
-$('backLobby').onclick=()=>{if(ws)ws.close();joined=false;solo=false;showPanel('lobby');setStatus('● OFFLINE');};
+$('solo').onclick=()=>{timeAttackMode=false;solo=true;joined=true;online=false;myId='local';mode='individual';$('nicknameEdit').value=$('nickname').value.trim()||'Racer';showPanel('setup');setStatus('● PRACTICE');$('roominfo').textContent='PRACTICE MODE';$('roster').innerHTML='<span class="roster-chip">🏎 나</span>';$('rosterCount').textContent='1 / 1';$('hostHint').textContent='혼자 연습 모드입니다.';$('startRace').disabled=false;};
+$('timeAttack').onclick=async()=>{timeAttackMode=true;solo=true;joined=true;online=false;myId='local';mode='individual';$('nicknameEdit').value=$('nickname').value.trim()||'Racer';$('hostHint').textContent='3랩 타임어택 · 전체 기록 랭킹에 도전하세요.';$('startRace').textContent='타임어택 시작';$('startRace').disabled=false;showPanel('setup');setStatus('● TIME ATTACK');$('roominfo').textContent='TIME ATTACK · SOLO';await loadCloudAccount().catch(()=>{});renderVehicleShop();await loadTimeAttackBoard();};
+$('refreshRecords').onclick=loadTimeAttackBoard;
+$('backLobby').onclick=()=>{if(ws)ws.close();joined=false;solo=false;timeAttackMode=false;$('startRace').textContent='3랩 레이스 시작';showPanel('lobby');setStatus('● OFFLINE');};
 document.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>{if(myId!==hostId&&!solo)return;setMode(b.dataset.mode);});
-document.querySelectorAll('[data-track]').forEach(b=>b.onclick=()=>{if(myId!==hostId&&!solo)return;setTrack(b.dataset.track);});
+document.querySelectorAll('[data-track]').forEach(b=>b.onclick=()=>{if(myId!==hostId&&!solo)return;setTrack(b.dataset.track);if(timeAttackMode)loadTimeAttackBoard();});
 document.querySelectorAll('[data-car]').forEach(b=>b.onclick=()=>selectCar(b.dataset.car));
 document.querySelectorAll('[data-team]').forEach(b=>b.onclick=()=>selectTeam(b.dataset.team));
 $('startRace').onclick=()=>{if(solo){startLocal();return;}if(myId===hostId)send({type:'start'});};
 $('again').onclick=()=>{showPanel('setup');if(solo){resetCar();$('startRace').disabled=false;}else send({type:'restart'});};
 $('signIn').onclick=signIn;$('signUp').onclick=signUp;$('signOut').onclick=async()=>{await supabase.auth.signOut();accountUser=null;updateAuthUI();showPanel('lobby');};
 supabase.auth.onAuthStateChange(async (_event,session)=>{accountUser=session?.user||null;updateAuthUI();if(accountUser){try{await loadCloudAccount();}catch(e){console.error(e);}}});
-document.querySelectorAll('[data-grade]').forEach(b=>b.onclick=()=>selectGrade(b.dataset.grade));renderVehicleRatings();$('openGarage').onclick=renderGarage;$('closeGarage').onclick=()=>showPanel(joined?'setup':'lobby');
+document.querySelectorAll('[data-grade]').forEach(b=>b.onclick=()=>selectGrade(b.dataset.grade));renderVehicleRatings();renderVehicleShop();$('openGarage').onclick=renderGarage;$('closeGarage').onclick=()=>showPanel(joined?'setup':'lobby');
 $('openShop').onclick=()=>{shopCar=carId;renderShop();showPanel('shop');};
 $('closeShop').onclick=()=>showPanel(joined?'setup':'lobby');
 document.querySelectorAll('[data-shopcar]').forEach(b=>b.onclick=()=>{shopCar=b.dataset.shopcar;renderShop();});
