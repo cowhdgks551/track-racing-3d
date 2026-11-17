@@ -129,6 +129,7 @@ function connect(){
 }
 function applyRoom(m){
  hostId=m.hostId;mode=m.config.mode;trackId=m.config.track;players=m.players;
+ const self=players.find(p=>p.id===myId);if(self){carId=self.car;team=self.team;}
  if(trackId!==activeTrack){activeTrack=trackId;buildTrack(trackId);resetCar();}
  $('teamSelect').hidden=mode!=='team';
  $('hostHint').textContent=myId===hostId?'방장입니다. 설정을 선택하고 레이스를 시작하세요.':'방장이 레이스를 시작할 때까지 기다려주세요.';
