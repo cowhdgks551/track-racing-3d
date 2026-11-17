@@ -203,12 +203,16 @@ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const setStatus=t=>$('connection').textContent=t;
 function send(o){if(ws&&ws.readyState===1)ws.send(JSON.stringify(o));}
 function showPanel(id){['lobby','setup','results','shop','garage'].forEach(k=>$(k).hidden=k!==id);}
-function makeCar(color){
+function makeCar(color,type='balance'){
  const g=new THREE.Group(),paint=new THREE.MeshStandardMaterial({color,roughness:.35,metalness:.12}),dark=new THREE.MeshStandardMaterial({color:0x17212a,roughness:.7});
- const body=new THREE.Mesh(new THREE.BoxGeometry(2.1,.58,3.8),paint);body.position.y=.7;body.castShadow=true;g.add(body);g.userData.bodyMaterial=paint;
+ const dimensions={acceleration:[2.05,.56,3.65],topSpeed:[1.92,.5,4.15],cornering:[2.18,.54,3.55],balance:[2.1,.58,3.8]}[type]||[2.1,.58,3.8];
+ const body=new THREE.Mesh(new THREE.BoxGeometry(...dimensions),paint);body.position.y=.7;body.castShadow=true;g.add(body);g.userData.bodyMaterial=paint;
  const cabin=new THREE.Mesh(new THREE.BoxGeometry(1.5,.62,1.7),new THREE.MeshStandardMaterial({color:0x9fc2ce,metalness:.2,roughness:.25}));cabin.position.set(0,1.23,-.18);cabin.castShadow=true;g.add(cabin);
  for(const sx of [-1.06,1.06])for(const sz of [-1.2,1.2]){const w=new THREE.Mesh(new THREE.BoxGeometry(.34,.58,.8),dark);w.position.set(sx,.44,sz);g.add(w);}
- const spoiler=new THREE.Mesh(new THREE.BoxGeometry(2.05,.12,.3),dark);spoiler.position.set(0,1.05,-1.72);g.add(spoiler);
+ const spoilerWidth=type==='cornering'?2.2:type==='topSpeed'?1.65:2.05;
+ const spoiler=new THREE.Mesh(new THREE.BoxGeometry(spoilerWidth,.12,.3),dark);spoiler.position.set(0,1.05,-1.72);g.add(spoiler);
+ if(type==='acceleration'){const splitter=new THREE.Mesh(new THREE.BoxGeometry(2.15,.1,.38),dark);splitter.position.set(0,.52,1.88);g.add(splitter);}
+ if(type==='topSpeed'){const fin=new THREE.Mesh(new THREE.BoxGeometry(.12,.34,.9),dark);fin.position.set(0,1.18,-1.35);g.add(fin);}
  return g;
 }
 function initScene(){
@@ -217,7 +221,7 @@ function initScene(){
  renderer=new THREE.WebGLRenderer({antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setSize(innerWidth,innerHeight);renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;$('game').prepend(renderer.domElement);
  scene.add(new THREE.HemisphereLight(0xffffff,0x60715b,1.8));const sun=new THREE.DirectionalLight(0xffffff,2);sun.position.set(-35,55,25);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);scene.add(sun);
  ground=new THREE.Mesh(new THREE.PlaneGeometry(500,500),new THREE.MeshStandardMaterial({color:0x719e6b,roughness:1}));ground.rotation.x=-Math.PI/2;ground.position.y=-.16;ground.receiveShadow=true;scene.add(ground);
- localCar=makeCar(0xffd447);scene.add(localCar);applyCarCosmetics(localCar,carId);buildTrack(trackId);resetCar();
+ localCar=makeCar(0xffd447,carId);scene.add(localCar);applyCarCosmetics(localCar,carId);buildTrack(trackId);resetCar();
  addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
  animate();
 }
@@ -326,7 +330,7 @@ function showResults(m){
 }
 function setMode(v){mode=v;if(online)send({type:'configure',mode,track:trackId});}
 function setTrack(v){trackId=v;activeTrack=v;buildTrack(v);resetCar();if(online)send({type:'configure',mode,track:trackId});}
-async function selectCar(v){carId=v;renderVehicleRatings();applyLocalCosmetics();if(accountUser){const {error}=await supabase.rpc('select_vehicle',{p_vehicle_class:v,p_grade:vehicleGrade});if(error)console.error(error);}if(online)send({type:'select',car:carId,grade:vehicleGrade,team});}
+async async function selectCar(v){carId=v;renderVehicleRatings();applyLocalCosmetics();if(accountUser){const {error}=await supabase.rpc('select_vehicle',{p_vehicle_class:v,p_grade:vehicleGrade});if(error)console.error(error);}if(online)send({type:'select',car:carId,grade:vehicleGrade,team});}
 function renderVehicleRatings(){
  const stats=vehicleRatings();
  const labels=[['acceleration','가속'],['topSpeed','최고속도'],['cornering','코너링']];
@@ -334,7 +338,7 @@ function renderVehicleRatings(){
  el.innerHTML='<div class="stat-heading">'+CLASS_RATIOS[carId].label+' · '+vehicleGrade+'등급</div>'+labels.map(([key,label])=>'<div class="stat-row"><span>'+label+'</span><div class="stat-track"><i style="width:'+stats[key]+'%"></i></div><b>'+stats[key]+'</b></div>').join('');
  document.querySelectorAll('[data-grade]').forEach(b=>b.classList.toggle('active',b.dataset.grade===vehicleGrade));
 }
-async function selectGrade(grade){
+async async function selectGrade(grade){
  if(!GRADE_PEAK[grade])return;
  if(accountUser&&!cloudGarage?.vehicles?.some(v=>v.vehicle_class===carId&&v.vehicle_grade===grade)){alert('먼저 상점에서 해당 등급 차량을 구매해주세요.');return;}
  vehicleGrade=grade;renderVehicleRatings();
