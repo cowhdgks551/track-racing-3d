@@ -27,3 +27,18 @@
  #message{bottom:120px}
 }
 @media (pointer:coarse) and (max-width:390px){.steer .control{width:84px;height:84px;min-width:84px;min-height:84px}}
+
+/* Reverse / drift touch controls; retain room for enlarged steering buttons. */
+.pedals{gap:6px;align-items:flex-end}
+.pedals .control{width:64px;height:64px;font-size:10px}
+.pedals .drift{background:#ef7e36d9;color:#fff}
+@media(pointer:coarse) and (max-width:799px){
+ .pedals{gap:5px}
+ .pedals .control{width:58px;height:68px;font-size:10px}
+ .steer{gap:7px}
+ .steer .control{width:82px;height:82px;min-width:82px;min-height:82px}
+}
+@media(pointer:coarse) and (max-width:390px){
+ .pedals .control{width:52px;height:62px;font-size:9px}
+ .steer .control{width:72px;height:72px;min-width:72px;min-height:72px}
+}
