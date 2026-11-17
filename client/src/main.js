@@ -109,7 +109,7 @@ let scene,camera,renderer,curve,localCar,ground,trackGroup;
 let ws=null,myId=null,roomCode='',online=false,joined=false,hostId=null;
 let mode='individual',trackId='yeongam',carId='balance',team=null,players=[];
 let started=false,finished=false,lap=0,progress=0,lastProgress=0,speed=0,heading=0,x=0,z=0;
-let lateralVelocity=0,yawVelocity=0,steeringAngle=0;const wheelBase=2.65;const CAR_VISUAL_SCALE=.72;
+let lateralVelocity=0,yawVelocity=0,steeringAngle=0;const wheelBase=2.65;const CAR_VISUAL_SCALE=.88;
 let raceStart=0,elapsed=0,sendClock=0,solo=false;
 const keys={left:false,right:false,gas:false,reverse:false,drift:false};
 const remotes=new Map(),clock=new THREE.Clock();
@@ -238,7 +238,7 @@ async function signUp(){
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const setStatus=t=>$('connection').textContent=t;
 function send(o){if(ws&&ws.readyState===1)ws.send(JSON.stringify(o));}
-function showPanel(id){if(!accountUser&&id!=='lobby')id='lobby';['lobby','setup','results','shop','garage'].forEach(k=>$(k).hidden=k!==id);const racing=!id&&started&&!!accountUser;$('raceControls').hidden=!racing;$('raceHud').hidden=!racing;$('message').hidden=!racing;$('roominfo').hidden=!(id==='setup'||racing);$('leader').hidden=!racing||players.length<2;}
+function showPanel(id){if(!accountUser&&id!=='lobby')id='lobby';const racing=!id&&started&&!!accountUser;$('openGarage').hidden=racing||!accountUser;$('openShop').hidden=racing||!accountUser;['lobby','setup','results','shop','garage'].forEach(k=>$(k).hidden=k!==id);$('raceControls').hidden=!racing;$('raceHud').hidden=!racing;$('message').hidden=!racing;$('roominfo').hidden=!(id==='setup'||racing);$('leader').hidden=!racing||players.length<2;}
 function makeCar(color,type='balance'){
  const g=new THREE.Group(),paint=new THREE.MeshStandardMaterial({color,roughness:.35,metalness:.12}),dark=new THREE.MeshStandardMaterial({color:0x17212a,roughness:.7});
  const dimensions={acceleration:[2.05,.56,3.65],topSpeed:[1.92,.5,4.15],cornering:[2.18,.54,3.55],balance:[2.1,.58,3.8]}[type]||[2.1,.58,3.8];
@@ -254,7 +254,7 @@ function makeCar(color,type='balance'){
 }
 function initScene(){
  scene=new THREE.Scene();scene.background=new THREE.Color(0xb8d4df);scene.fog=new THREE.Fog(0xb8d4df,100,230);
- camera=new THREE.PerspectiveCamera(58,innerWidth/innerHeight,.1,500);
+ camera=new THREE.PerspectiveCamera(65,innerWidth/innerHeight,.1,500);
  renderer=new THREE.WebGLRenderer({antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setSize(innerWidth,innerHeight);renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;$('game').prepend(renderer.domElement);
  scene.add(new THREE.HemisphereLight(0xffffff,0x60715b,1.8));const sun=new THREE.DirectionalLight(0xffffff,2);sun.position.set(-35,55,25);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);scene.add(sun);
  ground=new THREE.Mesh(new THREE.PlaneGeometry(500,500),new THREE.MeshStandardMaterial({color:0x719e6b,roughness:1}));ground.rotation.x=-Math.PI/2;ground.position.y=-.16;ground.receiveShadow=true;scene.add(ground);
@@ -325,8 +325,9 @@ function buildTrack(id){
 }
 function sideSign(i){return i%2?1:-1;}
 function nearest(px,pz){let best=0,dist=Infinity;for(let i=0;i<400;i++){const p=curve.getPointAt(i/400),d=(p.x-px)**2+(p.z-pz)**2;if(d<dist){dist=d;best=i/400;}}return {progress:best,dist:Math.sqrt(dist),point:curve.getPointAt(best)};}
+function resetInput(){for(const k of Object.keys(keys))keys[k]=false;}
 function resetCar(){
- lateralVelocity=0;yawVelocity=0;steeringAngle=0;physicsAccumulator=0;driftAngle=0;driftDirection=0;wasDrifting=false;
+ resetInput();lateralVelocity=0;yawVelocity=0;steeringAngle=0;physicsAccumulator=0;driftAngle=0;driftDirection=0;wasDrifting=false;
  const p=curve.getPointAt(.005),t=curve.getTangentAt(.005);x=p.x;z=p.z;heading=Math.atan2(t.x,t.z);speed=0;lap=0;progress=.005;lastProgress=.005;finished=false;localCar.position.set(x,0,z);localCar.rotation.y=heading;
  $('lap').textContent='0 / 3';$('time').textContent='00:00.0';$('position').textContent='-';
 }
@@ -389,7 +390,7 @@ function startRace(){
  started=true;finished=false;elapsed=0;raceStart=performance.now();resetCar();$('message').textContent='GO! 3랩을 완주하세요!';showPanel('');
 }
 function finishRace(){
- if(finished)return;finished=true;started=false;speed=0;elapsed=performance.now()-raceStart;
+ if(finished)return;finished=true;started=false;speed=0;resetInput();elapsed=performance.now()-raceStart;
  if(timeAttackMode){saveTimeAttackRecord();$('message').textContent='타임어택 완주! '+formatTime(elapsed);showPanel('setup');return;}
  $('message').textContent='FINISH! 결과를 기다리는 중';
  if(solo){showResults({mode:'individual',results:[{id:myId,name:$('nickname').value.trim()||'Racer',team:null,finished:true,rank:1,points:10,coins:0}],raceId:'solo-'+Date.now(),teams:{red:0,blue:0,winner:'draw'}});}
@@ -397,7 +398,7 @@ function finishRace(){
 }
 function showResults(m){
  awardRaceCoins(m);
- started=false;finished=true;showPanel('results');$('leader').hidden=true;
+ started=false;finished=true;resetInput();showPanel('results');$('leader').hidden=true;
  if(m.mode==='team'){
   const t=m.teams;$('teamScore').innerHTML=`<div class="scoreboard"><div class="red-score"><small>RED TEAM</small><b>${t.red}</b></div><div class="versus">VS</div><div class="blue-score"><small>BLUE TEAM</small><b>${t.blue}</b></div></div><div class="winner">${t.winner==='draw'?'무승부':t.winner==='red'?'🔴 레드팀 승리':'🔵 블루팀 승리'}</div>`;
  }else $('teamScore').innerHTML='';
@@ -414,6 +415,7 @@ function refreshSelections(){
 function setMode(v){mode=v;refreshSelections();if(online)send({type:'configure',mode,track:trackId});}
 function setTrack(v){trackId=v;activeTrack=v;buildTrack(v);resetCar();refreshSelections();if(online)send({type:'configure',mode,track:trackId});}
 async function selectCar(v){
+ if(started)return notify('경기 중에는 차량을 변경할 수 없습니다.');
  carId=v;refreshSelections();
  if(accountUser&&!cloudGarage?.vehicles?.some(row=>row.vehicle_class===v&&row.vehicle_grade===vehicleGrade))vehicleGrade='D';
  renderVehicleRatings();
@@ -491,20 +493,20 @@ function stepVehicle(dt,stats){
  const back=reverse*stats.accel*.33;
  const resistance=.22+.012*Math.abs(speed)+.002*speed*speed;
  // Drift has a hard speed-loss budget even at full throttle.
- const driftLoss=activeDrift?(5.5+.14*Math.max(0,speed)):0;
+ const driftLoss=activeDrift?(1.2+.025*Math.max(0,speed)):0;
  const rawAcceleration=engine-back-Math.sign(speed)*(resistance+driftLoss);
- const acceleration=activeDrift?Math.min(-3.8,rawAcceleration):rawAcceleration;
+ const acceleration=activeDrift?Math.min(-.65,rawAcceleration):rawAcceleration;
  speed=clamp(speed+acceleration*dt,-stats.max*.30,stats.max);
  if(!throttle&&!reverse&&Math.abs(speed)<.15)speed=0;
  const grip=clamp(stats.grip,.65,1.3);
  const ordinaryYaw=speed*Math.tan(steeringAngle)/wheelBase*.48;
  // A held drift rotates the nose substantially, while velocity trails behind.
- const driftYaw=driftDirection*(.72+Math.min(Math.abs(speed),36)*.023)
-                 +steerInput*.24;
+ const driftYaw=driftDirection*(.48+Math.min(Math.abs(speed),36)*.013)
+                 +steerInput*.38;
  const targetYaw=activeDrift?driftYaw:ordinaryYaw;
  yawVelocity+=(targetYaw-yawVelocity)*Math.min(1,dt*(activeDrift?6.5:7.5*grip));
  if(activeDrift){
-  driftAngle=clamp(driftAngle+dt*(.8+.012*Math.abs(speed)),0,.72);
+  driftAngle=clamp(driftAngle+dt*(.55+.008*Math.abs(speed)),0,.72);
   // Velocity vector lags behind the nose: visible side-slip in corners.
   const sideTarget=-driftDirection*Math.abs(speed)*Math.sin(driftAngle);
   lateralVelocity+=(sideTarget-lateralVelocity)*Math.min(1,dt*4.5);
@@ -544,13 +546,14 @@ function update(dt){
 function formatTime(ms){const s=ms/1000;return String(Math.floor(s/60)).padStart(2,'0')+':'+String(Math.floor(s%60)).padStart(2,'0')+'.'+Math.floor(s%1*10);}
 function animate(){requestAnimationFrame(animate);const dt=Math.min(clock.getDelta(),.04);if(joined)update(dt);
  const target=new THREE.Vector3(x,0,z),racing=started;
- const followDistance=racing?7.4:12,followHeight=racing?3.2:7.5;
+ const followDistance=racing?6.1:11,followHeight=racing?3.9:7.5;
  const behind=new THREE.Vector3(-Math.sin(heading)*followDistance,followHeight,-Math.cos(heading)*followDistance);
  camera.position.lerp(target.clone().add(behind),1-Math.exp(-dt*(racing?6:3.5)));
  camera.lookAt(target.clone().add(new THREE.Vector3(0,racing?1.15:1,0)));renderer.render(scene,camera);}
-function hold(id,key){const el=$(id),down=e=>{e.preventDefault();keys[key]=true;},up=e=>{e.preventDefault();keys[key]=false;};el.addEventListener('pointerdown',down);['pointerup','pointerleave','pointercancel'].forEach(ev=>el.addEventListener(ev,up));}
+function hold(id,key){const el=$(id),down=e=>{e.preventDefault();if(!started)return;el.setPointerCapture?.(e.pointerId);keys[key]=true;},up=e=>{e.preventDefault();keys[key]=false;};el.addEventListener('pointerdown',down);['pointerup','pointercancel','lostpointercapture'].forEach(ev=>el.addEventListener(ev,up));}
 hold('left','left');hold('right','right');hold('gas','gas');hold('reverse','reverse');hold('drift','drift');
 addEventListener('keydown',e=>{if(e.target?.closest?.('input,textarea,select,[contenteditable]')||!started||!accountUser)return;if(['ArrowLeft','a','A'].includes(e.key))keys.left=true;if(['ArrowRight','d','D'].includes(e.key))keys.right=true;if(['ArrowUp','w','W'].includes(e.key))keys.gas=true;if(['ArrowDown','s','S'].includes(e.key))keys.reverse=true;if([' ','Shift'].includes(e.key)){e.preventDefault();keys.drift=true;}});
+addEventListener('blur',resetInput);
 addEventListener('keyup',e=>{if(e.target?.closest?.('input,textarea,select,[contenteditable]')||!started||!accountUser)return;if(['ArrowLeft','a','A'].includes(e.key))keys.left=false;if(['ArrowRight','d','D'].includes(e.key))keys.right=false;if(['ArrowUp','w','W'].includes(e.key))keys.gas=false;if(['ArrowDown','s','S'].includes(e.key))keys.reverse=false;if([' ','Shift'].includes(e.key))keys.drift=false;});
 $('join').onclick=()=>{if(!accountUser)return notify('먼저 로그인해주세요.');if(joined)return;roomCode=$('room').value.trim().toUpperCase()||'SPEED';connect();};
 function saveNickname(){
