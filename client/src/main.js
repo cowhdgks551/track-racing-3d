@@ -333,7 +333,9 @@ function setTrack(v){trackId=v;activeTrack=v;buildTrack(v);resetCar();if(online)
 async function selectCar(v){
  carId=v;
  if(accountUser&&!cloudGarage?.vehicles?.some(row=>row.vehicle_class===v&&row.vehicle_grade===vehicleGrade))vehicleGrade='D';
- renderVehicleRatings();applyLocalCosmetics();
+ renderVehicleRatings();
+ if(localCar){const pos=localCar.position.clone(),rot=localCar.rotation.y;scene.remove(localCar);localCar=makeCar(0xffd447,v);localCar.position.copy(pos);localCar.rotation.y=rot;scene.add(localCar);}
+ applyLocalCosmetics();
  if(accountUser){const {error}=await supabase.rpc('select_vehicle',{p_vehicle_class:v,p_grade:vehicleGrade});if(error)console.error(error);}
  if(online)send({type:'select',car:carId,grade:vehicleGrade,team});
 }
