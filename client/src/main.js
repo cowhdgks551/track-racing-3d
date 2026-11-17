@@ -180,7 +180,7 @@ async function loadCloudAccount(){
  }
  updateWalletUI();
  if(profile.data?.nickname)$('nickname').value=profile.data.nickname;else if(accountUser.user_metadata?.nickname)$('nickname').value=accountUser.user_metadata.nickname;
- if(localCar)applyLocalCosmetics();
+ if(localCar){syncLocalCarModel();applyLocalCosmetics();}
  refreshSelections();
 }
 async function renderGarage(){
@@ -242,6 +242,11 @@ const setStatus=t=>$('connection').textContent=t;
 function send(o){if(ws&&ws.readyState===1)ws.send(JSON.stringify(o));}
 function showPanel(id){if(started&&id)return; if(!accountUser&&id!=='lobby')id='lobby';const racing=!id&&started&&!!accountUser;$('openGarage').hidden=racing||!accountUser;$('openShop').hidden=racing||!accountUser;['lobby','setup','results','shop','garage'].forEach(k=>$(k).hidden=k!==id);$('raceControls').hidden=!racing;$('raceHud').hidden=!racing;$('message').hidden=!racing;$('roominfo').hidden=!(id==='setup'||racing);$('leader').hidden=!racing||players.length<2;}
 function makeCar(color,type='balance'){return createCarModel(color,type);}
+function syncLocalCarModel(){
+ if(!localCar||localCar.userData.vehicleClass===carId)return;
+ const next=makeCar(0xffd447,carId);next.position.copy(localCar.position);next.rotation.copy(localCar.rotation);
+ scene.remove(localCar);localCar=next;scene.add(localCar);applyCarCosmetics(localCar,carId);
+}
 function initScene(){
  scene=new THREE.Scene();scene.background=new THREE.Color(0xb8d4df);scene.fog=new THREE.Fog(0xb8d4df,100,230);
  camera=new THREE.PerspectiveCamera(65,innerWidth/innerHeight,.1,500);
@@ -313,6 +318,7 @@ function nearest(px,pz){
 function resetInput(){for(const k of Object.keys(keys))keys[k]=false;vehiclePhysics?.clearControls();}
 function stopVehicle(){resetInput();vehiclePhysics?.stop();physicsAccumulator=0;speed=0;raceStats=null;}
 function resetCar(){
+ syncLocalCarModel();
  resetInput();physicsAccumulator=0;
  const p=curve.getPointAt(0),t=curve.getTangentAt(0);x=p.x;z=p.z;heading=Math.atan2(t.x,t.z);speed=0;lap=0;progress=0;lastProgress=0;finished=false;localCar.position.set(x,0,z);localCar.rotation.y=heading;
  const shape=VEHICLE_SHAPES[carId];vehiclePhysics.setShape(shape.width,shape.length);
