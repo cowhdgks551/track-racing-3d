@@ -7,7 +7,7 @@ app.innerHTML=`
  <header class="topbar"><div class="brand">TRACK <span>RACING</span> 3D</div><div class="pill" id="connection">● OFFLINE</div></header>
  <div class="race-hud" id="raceHud" hidden><div class="stat"><small>LAP</small><b id="lap">0 / 3</b></div><div class="stat"><small>TIME</small><b id="time">00:00.0</b></div><div class="stat"><small>SPEED</small><b id="speed">0</b><small>KM/H</small></div><div class="stat"><small>POSITION</small><b id="position">-</b></div></div>
  <div class="wallet" id="wallet" hidden>🪙 <b id="coinBalance">0</b></div><button class="garage-open" id="openGarage" hidden>차고</button><button class="shop-open" id="openShop" hidden>상점</button><div class="roominfo" id="roominfo" hidden></div><div class="leader" id="leader" hidden><strong>RACE ORDER</strong><div id="leaderlist"></div></div>
- <div class="controls" id="raceControls" hidden><div class="steer"><button class="control" id="left">◀</button><button class="control" id="right">▶</button></div><div class="pedals"><button class="control" id="brake">BRAKE</button><button class="control go" id="gas">GAS</button></div></div>
+ <div class="controls" id="raceControls" hidden><div class="steer"><button class="control" id="left">◀</button><button class="control" id="right">▶</button></div><div class="pedals"><button class="control" id="reverse">REV</button><button class="control drift" id="drift">DRIFT</button><button class="control go" id="gas">GAS</button></div></div>
  <div id="message" hidden>WASD / 방향키로 조작 · 모바일은 화면 버튼</div>
  <section class="panel" id="lobby">
   <div class="eyebrow">ONLINE CIRCUIT RACING</div><h1>TRACK <span>RACING</span> 3D</h1><p class="sub">국내 서킷에서 펼쳐지는 온라인 레이싱</p>
@@ -109,9 +109,9 @@ let scene,camera,renderer,curve,localCar,ground,trackGroup;
 let ws=null,myId=null,roomCode='',online=false,joined=false,hostId=null;
 let mode='individual',trackId='yeongam',carId='balance',team=null,players=[];
 let started=false,finished=false,lap=0,progress=0,lastProgress=0,speed=0,heading=0,x=0,z=0;
-let lateralVelocity=0,yawVelocity=0,steeringAngle=0;const wheelBase=2.65;
+let lateralVelocity=0,yawVelocity=0,steeringAngle=0;const wheelBase=2.65;const CAR_VISUAL_SCALE=.72;
 let raceStart=0,elapsed=0,sendClock=0,solo=false;
-const keys={left:false,right:false,gas:false,brake:false};
+const keys={left:false,right:false,gas:false,reverse:false,drift:false};
 const remotes=new Map(),clock=new THREE.Clock();
 const pointsAward=[10,9,8,7,6,5,4,3,2,1];
 const PAINTS=[{id:'red',name:'레이싱 레드',color:'#ef4444'},{id:'blue',name:'일렉트릭 블루',color:'#2684ff'},{id:'green',name:'네온 그린',color:'#55d66b'},{id:'purple',name:'퍼플 메탈',color:'#9b59d0'},{id:'white',name:'펄 화이트',color:'#f2f3f4'},{id:'black',name:'미드나잇 블랙',color:'#222831'},{id:'orange',name:'레이싱 오렌지',color:'#ff8a24'},{id:'pink',name:'핫 핑크',color:'#f052a5'}];
@@ -249,6 +249,7 @@ function makeCar(color,type='balance'){
  const spoiler=new THREE.Mesh(new THREE.BoxGeometry(spoilerWidth,.12,.3),dark);spoiler.position.set(0,1.05,-1.72);g.add(spoiler);
  if(type==='acceleration'){const splitter=new THREE.Mesh(new THREE.BoxGeometry(2.15,.1,.38),dark);splitter.position.set(0,.52,1.88);g.add(splitter);}
  if(type==='topSpeed'){const fin=new THREE.Mesh(new THREE.BoxGeometry(.12,.34,.9),dark);fin.position.set(0,1.18,-1.35);g.add(fin);}
+ g.scale.setScalar(CAR_VISUAL_SCALE);
  return g;
 }
 function initScene(){
@@ -467,21 +468,24 @@ async function saveTimeAttackRecord(){
 
 function startLocal(){started=true;finished=false;elapsed=0;raceStart=performance.now();resetCar();showPanel('');$('message').textContent='GO! 3랩을 완주하세요!';}
 function update(dt){
- const stats=getVehicleStats(carId,vehicleGrade),accel=keys.gas?stats.accel:0,brake=keys.brake?34:0;
+ const stats=getVehicleStats(carId,vehicleGrade);
  if(started){
   // Bicycle-model steering with speed-sensitive steering, yaw inertia and lateral tyre grip.
   const steerInput=(keys.left?1:0)-(keys.right?1:0);
-  const targetSteer=steerInput*(.47/(1+speed*.014));
+  const targetSteer=steerInput*(keys.drift?.57:.47)/(1+Math.abs(speed)*.014);
   steeringAngle+= (targetSteer-steeringAngle)*Math.min(1,dt*8);
   const engineForce=keys.gas?stats.accel:0;
-  const brakingForce=keys.brake?Math.min(40,speed/dt):0;
-  const drag=.014*speed+.0035*speed*speed;
-  speed=clamp(speed+(engineForce-brakingForce-drag)*dt,0,stats.max);
+  const reverseForce=keys.reverse?stats.accel*.65:0;
+  const drag=.014*Math.abs(speed)+.0035*speed*speed;
+  speed=clamp(speed+(engineForce-reverseForce-Math.sign(speed)*drag)*dt,-stats.max*.30,stats.max);
+  if(!keys.gas&&!keys.reverse&&Math.abs(speed)<.08)speed=0;
+  const drifting=keys.drift&&Math.abs(speed)>4;
+  if(drifting)speed*=Math.pow(.994,dt*60);
   const desiredYaw=speed*Math.tan(steeringAngle)/wheelBase;
   const grip=clamp(stats.grip,.65,1.3);
-  yawVelocity+=(desiredYaw-yawVelocity)*Math.min(1,dt*(2.6+grip*3.4));
-  const slipTarget=clamp((desiredYaw-yawVelocity)*speed*.12,-speed*.26,speed*.26);
-  lateralVelocity+=(slipTarget-lateralVelocity)*Math.min(1,dt*(3.5+grip*4));
+  yawVelocity+=(desiredYaw-yawVelocity)*Math.min(1,dt*(drifting?1.55:2.6+grip*3.4));
+  const slipTarget=clamp((desiredYaw-yawVelocity)*Math.abs(speed)*(drifting?.42:.12),-Math.abs(speed)*(drifting?.68:.26),Math.abs(speed)*(drifting?.68:.26));
+  lateralVelocity+=(slipTarget-lateralVelocity)*Math.min(1,dt*(drifting?1.15:3.5+grip*4));
   heading+=yawVelocity*dt;
   x+=(Math.sin(heading)*speed+Math.cos(heading)*lateralVelocity)*dt;
   z+=(Math.cos(heading)*speed-Math.sin(heading)*lateralVelocity)*dt;
@@ -495,21 +499,21 @@ function update(dt){
   $('time').textContent=formatTime(elapsed);
   sendClock+=dt;if(online&&sendClock>.08){sendClock=0;send({type:'state',x,z,rotation:heading,lap,progress});}
  }
- $('speed').textContent=Math.round(speed*4.2);
+ $('speed').textContent=Math.round(Math.abs(speed)*4.2);
  localCar.position.set(x,0,z);localCar.rotation.y=heading;
  for(const r of remotes.values()){const d=r.data;r.car.position.lerp(new THREE.Vector3(d.x,0,d.z),.28);r.car.rotation.y=d.rotation;}
 }
 function formatTime(ms){const s=ms/1000;return String(Math.floor(s/60)).padStart(2,'0')+':'+String(Math.floor(s%60)).padStart(2,'0')+'.'+Math.floor(s%1*10);}
 function animate(){requestAnimationFrame(animate);const dt=Math.min(clock.getDelta(),.04);if(joined)update(dt);
  const target=new THREE.Vector3(x,0,z),racing=started;
- const followDistance=racing?8.6:13,followHeight=racing?3.7:7.5;
+ const followDistance=racing?7.4:12,followHeight=racing?3.2:7.5;
  const behind=new THREE.Vector3(-Math.sin(heading)*followDistance,followHeight,-Math.cos(heading)*followDistance);
  camera.position.lerp(target.clone().add(behind),1-Math.exp(-dt*(racing?6:3.5)));
  camera.lookAt(target.clone().add(new THREE.Vector3(0,racing?1.15:1,0)));renderer.render(scene,camera);}
 function hold(id,key){const el=$(id),down=e=>{e.preventDefault();keys[key]=true;},up=e=>{e.preventDefault();keys[key]=false;};el.addEventListener('pointerdown',down);['pointerup','pointerleave','pointercancel'].forEach(ev=>el.addEventListener(ev,up));}
-hold('left','left');hold('right','right');hold('gas','gas');hold('brake','brake');
-addEventListener('keydown',e=>{if(e.target?.closest?.('input,textarea,select,[contenteditable]')||!started||!accountUser)return;if(['ArrowLeft','a','A'].includes(e.key))keys.left=true;if(['ArrowRight','d','D'].includes(e.key))keys.right=true;if(['ArrowUp','w','W'].includes(e.key))keys.gas=true;if(['ArrowDown','s','S'].includes(e.key))keys.brake=true;});
-addEventListener('keyup',e=>{if(e.target?.closest?.('input,textarea,select,[contenteditable]')||!started||!accountUser)return;if(['ArrowLeft','a','A'].includes(e.key))keys.left=false;if(['ArrowRight','d','D'].includes(e.key))keys.right=false;if(['ArrowUp','w','W'].includes(e.key))keys.gas=false;if(['ArrowDown','s','S'].includes(e.key))keys.brake=false;});
+hold('left','left');hold('right','right');hold('gas','gas');hold('reverse','reverse');hold('drift','drift');
+addEventListener('keydown',e=>{if(e.target?.closest?.('input,textarea,select,[contenteditable]')||!started||!accountUser)return;if(['ArrowLeft','a','A'].includes(e.key))keys.left=true;if(['ArrowRight','d','D'].includes(e.key))keys.right=true;if(['ArrowUp','w','W'].includes(e.key))keys.gas=true;if(['ArrowDown','s','S'].includes(e.key))keys.reverse=true;if([' ','Shift'].includes(e.key)){e.preventDefault();keys.drift=true;}});
+addEventListener('keyup',e=>{if(e.target?.closest?.('input,textarea,select,[contenteditable]')||!started||!accountUser)return;if(['ArrowLeft','a','A'].includes(e.key))keys.left=false;if(['ArrowRight','d','D'].includes(e.key))keys.right=false;if(['ArrowUp','w','W'].includes(e.key))keys.gas=false;if(['ArrowDown','s','S'].includes(e.key))keys.reverse=false;if([' ','Shift'].includes(e.key))keys.drift=false;});
 $('join').onclick=()=>{if(!accountUser)return notify('먼저 로그인해주세요.');if(joined)return;roomCode=$('room').value.trim().toUpperCase()||'SPEED';connect();};
 function saveNickname(){
  const value=$('nicknameEdit').value.trim();
