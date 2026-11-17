@@ -330,7 +330,7 @@ function showResults(m){
 }
 function setMode(v){mode=v;if(online)send({type:'configure',mode,track:trackId});}
 function setTrack(v){trackId=v;activeTrack=v;buildTrack(v);resetCar();if(online)send({type:'configure',mode,track:trackId});}
-async async function selectCar(v){carId=v;renderVehicleRatings();applyLocalCosmetics();if(accountUser){const {error}=await supabase.rpc('select_vehicle',{p_vehicle_class:v,p_grade:vehicleGrade});if(error)console.error(error);}if(online)send({type:'select',car:carId,grade:vehicleGrade,team});}
+async function selectCar(v){carId=v;renderVehicleRatings();applyLocalCosmetics();if(accountUser){const {error}=await supabase.rpc('select_vehicle',{p_vehicle_class:v,p_grade:vehicleGrade});if(error)console.error(error);}if(online)send({type:'select',car:carId,grade:vehicleGrade,team});}
 function renderVehicleRatings(){
  const stats=vehicleRatings();
  const labels=[['acceleration','가속'],['topSpeed','최고속도'],['cornering','코너링']];
@@ -338,7 +338,7 @@ function renderVehicleRatings(){
  el.innerHTML='<div class="stat-heading">'+CLASS_RATIOS[carId].label+' · '+vehicleGrade+'등급</div>'+labels.map(([key,label])=>'<div class="stat-row"><span>'+label+'</span><div class="stat-track"><i style="width:'+stats[key]+'%"></i></div><b>'+stats[key]+'</b></div>').join('');
  document.querySelectorAll('[data-grade]').forEach(b=>b.classList.toggle('active',b.dataset.grade===vehicleGrade));
 }
-async async function selectGrade(grade){
+async function selectGrade(grade){
  if(!GRADE_PEAK[grade])return;
  if(accountUser&&!cloudGarage?.vehicles?.some(v=>v.vehicle_class===carId&&v.vehicle_grade===grade)){alert('먼저 상점에서 해당 등급 차량을 구매해주세요.');return;}
  vehicleGrade=grade;renderVehicleRatings();
