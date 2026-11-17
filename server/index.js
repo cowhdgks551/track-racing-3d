@@ -13,7 +13,7 @@ const rooms = new Map();
 const MAX_PLAYERS = 10;
 const POINTS = [10,9,8,7,6,5,4,3,2,1];
 
-app.get('/health', (_req,res)=>res.json({ok:true,game:'TRACK RACING 3D',rooms:rooms.size}));
+app.get('/health', (_req,res)=>res.json({ok:true,game:'TRACK RACING 3D',rooms:rooms.size,version:'1.2.0',raceTimeoutMs:1800000}));
 app.use(express.static(path.resolve(__dirname,'../dist')));
 app.get('*',(_req,res)=>res.sendFile(path.resolve(__dirname,'../dist/index.html')));
 

@@ -483,11 +483,11 @@ function update(dt){
    near=stepVehicle(1/120,stats);physicsAccumulator-=1/120;steps++;
   }
   if(steps===30)physicsAccumulator=0;
+  elapsed+=steps*(1000/120);
   const p=near.progress;
   if(lastProgress>.88&&p<.12&&speed>2.5){lap++;$('lap').textContent=`${lap} / 3`;lastProgress=p;if(lap>=3)finishRace();}
   else if(p>lastProgress-.12)lastProgress=p;
   progress=p;
-  elapsed=performance.now()-raceStart;
   $('time').textContent=formatTime(elapsed);
   sendClock+=dt;if(online&&sendClock>.08){sendClock=0;send({type:'state',x:x/100,z:z/100,rotation:heading,lap,progress});}
  }
