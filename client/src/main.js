@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import './style.css';
 import { createVehiclePhysics } from './vehiclePhysics.js';
+import { trackStrip } from './trackGeometry.js';
 
 const app=document.querySelector('#app');
 app.innerHTML=`
@@ -267,69 +268,51 @@ function initScene(){
  animate();
 }
 function buildTrack(id){
- trackId=id;if(trackGroup)scene.remove(trackGroup);trackGroup=new THREE.Group();scene.add(trackGroup);
- const data=TRACKS[id],raw=data.points.map(([a,b])=>new THREE.Vector3(a,0,b));
- curve=new THREE.CatmullRomCurve3(raw,true,'catmullrom',.15);
- const obstacles=[];
- const n=320,width=18,verts=[],indices=[];
- for(let i=0;i<=n;i++){const p=curve.getPointAt(i/n),t=curve.getTangentAt(i/n),normal=new THREE.Vector3(-t.z,0,t.x).normalize();
-  for(const s of [-1,1]){const q=p.clone().addScaledVector(normal,s*width/2);verts.push(q.x,.02,q.z);}
-  if(i<n){const k=i*2;indices.push(k,k+1,k+2,k+1,k+3,k+2);}
+ trackId=id;
+ if(trackGroup){
+  const geometries=new Set(),materials=new Set();
+  trackGroup.traverse(o=>{if(o.geometry)geometries.add(o.geometry);if(o.material)materials.add(o.material);});
+  scene.remove(trackGroup);geometries.forEach(g=>g.dispose());materials.forEach(m=>m.dispose());
  }
- const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(verts,3));geo.setIndex(indices);geo.computeVertexNormals();
- const road=new THREE.Mesh(geo,new THREE.MeshStandardMaterial({color:data.color,roughness:.96,side:THREE.DoubleSide}));road.receiveShadow=true;trackGroup.add(road);
- for(const side of [-1,1]){const pts=[];for(let i=0;i<=n;i++){const p=curve.getPointAt(i/n),t=curve.getTangentAt(i/n),nn=new THREE.Vector3(-t.z,0,t.x).normalize();p.addScaledVector(nn,side*(width/2-.18));p.y=.09;pts.push(p);}
-  trackGroup.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts),n,.14,5,true),new THREE.MeshStandardMaterial({color:0xf1eee3})));
+ trackGroup=new THREE.Group();scene.add(trackGroup);
+ const data=TRACKS[id];
+ curve=new THREE.CatmullRomCurve3(data.points.map(([x,z])=>new THREE.Vector3(x,0,z)),true,'centripetal');
+ const surface=(from,to,y,color)=>{
+  const mesh=new THREE.Mesh(trackStrip(curve,from,to,y),new THREE.MeshStandardMaterial({color,roughness:.95,side:THREE.DoubleSide}));
+  mesh.receiveShadow=true;trackGroup.add(mesh);
+ };
+ surface(-9,9,.02,data.color);
+ // Flat, continuous verges and white borders; remove floating tubes and scattered props.
+ for(const side of [-1,1]){
+  surface(side*9,side*10.1,.025,0xa8a69b);
+  surface(side*8.8,side*9,.035,0xf1eee3);
  }
- const centerMat=new THREE.MeshStandardMaterial({color:0xe7e5dc});
- for(let i=0;i<64;i++){const p=curve.getPointAt(i/64),t=curve.getTangentAt(i/64),d=new THREE.Mesh(new THREE.BoxGeometry(.16,.035,1.1),centerMat);d.position.set(p.x,.075,p.z);d.rotation.y=-Math.atan2(t.z,t.x);trackGroup.add(d);}
- // Start/finish checker strip
+ const obstacles=[],wallMaterial=new THREE.MeshStandardMaterial({color:0x89959e,roughness:.8});
+ const samples=Array.from({length:400},(_,i)=>curve.getPointAt(i/400));
+ const roadClear=(p)=>samples.every(s=>Math.hypot(s.x-p.x,s.z-p.z)>10.3);
+ const edge=(t,side)=>{
+  const p=curve.getPointAt(t),tan=curve.getTangentAt(t);
+  return p.add(new THREE.Vector3(-tan.z,0,tan.x).normalize().multiplyScalar(side*11.5));
+ };
+ const segments=220;
+ for(const side of [-1,1])for(let i=0;i<segments;i++){
+  const p=edge(i/segments,side),q=edge((i+1)/segments,side),mid=p.clone().add(q).multiplyScalar(.5);
+  // Narrow infield bends must not put the neighboring guardrail across the road.
+  if(!roadClear(p)||!roadClear(q)||!roadClear(mid))continue;
+  const depth=p.distanceTo(q)+.06,rotation=Math.atan2(q.x-p.x,q.z-p.z);
+  const mesh=new THREE.Mesh(new THREE.BoxGeometry(.22,.75,depth),wallMaterial);
+  mesh.position.set(mid.x,.4,mid.z);mesh.rotation.y=rotation;mesh.castShadow=true;trackGroup.add(mesh);
+  obstacles.push({x:mid.x,y:.4,z:mid.z,width:.22,height:.75,depth,rotation});
+ }
  const start=curve.getPointAt(0),tan=curve.getTangentAt(0),normal=new THREE.Vector3(-tan.z,0,tan.x).normalize();
- for(let i=0;i<10;i++)for(let j=0;j<2;j++){const tile=new THREE.Mesh(new THREE.BoxGeometry(width/10,.05,.65),new THREE.MeshStandardMaterial({color:(i+j)%2?0x20252a:0xffffff}));const offset=(i-4.5)*width/10;tile.position.copy(start).addScaledVector(normal,offset).addScaledVector(tan,j*.65-.32);tile.position.y=.11;tile.rotation.y=-Math.atan2(tan.z,tan.x);trackGroup.add(tile);}
- // Trackside 3D environment: kerbs, safety barriers, trees, stands and pit buildings.
- const curbRed=new THREE.MeshStandardMaterial({color:0xc82d34,roughness:.82});
- const curbWhite=new THREE.MeshStandardMaterial({color:0xf4f1e9,roughness:.8});
- const barrierMat=new THREE.MeshStandardMaterial({color:0xa8b2b9,metalness:.25,roughness:.58});
- const trunkMat=new THREE.MeshStandardMaterial({color:0x735338,roughness:1});
- const leafMat=new THREE.MeshStandardMaterial({color:0x315b36,roughness:1});
- const buildingMat=new THREE.MeshStandardMaterial({color:0xc9d1d5,metalness:.15,roughness:.75});
- const windowMat=new THREE.MeshStandardMaterial({color:0x35566a,metalness:.35,roughness:.25});
- const addBox=(w,h,d,mat,px,py,pz,rotation=0)=>{const mesh=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);mesh.position.set(px,py,pz);mesh.rotation.y=rotation;mesh.castShadow=true;mesh.receiveShadow=true;trackGroup.add(mesh);if(mat===barrierMat||mat===buildingMat)obstacles.push({x:px,y:py,z:pz,width:w,height:h,depth:d,rotation});return mesh;};
- for(let i=0;i<160;i++){
-  const t=i/160,p=curve.getPointAt(t),tangent=curve.getTangentAt(t),normal=new THREE.Vector3(-tangent.z,0,tangent.x).normalize(),rot=-Math.atan2(tangent.z,tangent.x);
-  for(const side of [-1,1]){
-   const edge=p.clone().addScaledVector(normal,side*9.15);
-   addBox(.78,.12,1.05,i%6<3?curbRed:curbWhite,edge.x,.12,edge.z,rot);
-   if(i%3===0){const b=p.clone().addScaledVector(normal,side*12.2);addBox(.18,.9,2.4,barrierMat,b.x,.55,b.z,rot);}
-  }
+ const checker=[new THREE.MeshStandardMaterial({color:0x20252a}),new THREE.MeshStandardMaterial({color:0xffffff})];
+ for(let i=0;i<10;i++)for(let j=0;j<2;j++){
+  const tile=new THREE.Mesh(new THREE.BoxGeometry(1.8,.025,.65),checker[(i+j)%2]);
+  tile.position.copy(start).addScaledVector(normal,(i-4.5)*1.8).addScaledVector(tan,j*.65-.32);tile.position.y=.055;
+  tile.rotation.y=Math.atan2(tan.x,tan.z);trackGroup.add(tile);
  }
- // Deterministic placement keeps every player's scenery consistent.
- for(let i=0;i<85;i++){
-  const t=((i*37)%89)/89,p=curve.getPointAt(t),tangent=curve.getTangentAt(t),normal=new THREE.Vector3(-tangent.z,0,tangent.x).normalize();
-  const side=i%2?1:-1,offset=19+(i*13%29),pos=p.clone().addScaledVector(normal,side*offset);
-  const height=2.6+(i*7%6)*.42;
-  addBox(.38,height,.38,trunkMat,pos.x,height/2,pos.z);
-  const canopy=new THREE.Mesh(new THREE.ConeGeometry(1.3+(i%4)*.2,3.4+(i%3)*.4,6),leafMat);canopy.position.set(pos.x,height+1,pos.z);canopy.castShadow=true;trackGroup.add(canopy);
- }
- for(let i=0;i<3;i++){
-  const t=(.02+i*.34)%1,p=curve.getPointAt(t),tangent=curve.getTangentAt(t),normal=new THREE.Vector3(-tangent.z,0,tangent.x).normalize(),pos=p.clone().addScaledVector(normal,19);
-  const rot=-Math.atan2(tangent.z,tangent.x);
-  addBox(17,3.5,5,buildingMat,pos.x,1.75,pos.z,rot);
-  addBox(16.5,1.25,5.15,windowMat,pos.x,2.35,pos.z,rot);
-  addBox(19,.28,6,barrierMat,pos.x,3.65,pos.z,rot);
- }
- for(let i=0;i<4;i++){
-  const t=(.14+i*.22)%1,p=curve.getPointAt(t),tangent=curve.getTangentAt(t),normal=new THREE.Vector3(-tangent.z,0,tangent.x).normalize(),pos=p.clone().addScaledVector(normal,-24);
-  const rot=-Math.atan2(tangent.z,tangent.x);
-  addBox(15,2.2,5,barrierMat,pos.x,1.1,pos.z,rot);
-  addBox(15,.4,7,buildingMat,pos.x,2.6,pos.z,rot);
- }
- // Simple scenery markers
- const postMat=new THREE.MeshStandardMaterial({color:0xf6f0df});
- for(let i=0;i<24;i++){const p=curve.getPointAt(i/24),t=curve.getTangentAt(i/24),nn=new THREE.Vector3(-t.z,0,t.x).normalize();p.addScaledVector(nn,sideSign(i)*17);const post=new THREE.Mesh(new THREE.BoxGeometry(.5,1.8,.5),postMat);post.position.set(p.x,.9,p.z);trackGroup.add(post);}
  vehiclePhysics.setObstacles(obstacles);
 }
-function sideSign(i){return i%2?1:-1;}
 function nearest(px,pz){let best=0,dist=Infinity;for(let i=0;i<400;i++){const p=curve.getPointAt(i/400),d=(p.x-px)**2+(p.z-pz)**2;if(d<dist){dist=d;best=i/400;}}return {progress:best,dist:Math.sqrt(dist),point:curve.getPointAt(best)};}
 function resetInput(){for(const k of Object.keys(keys))keys[k]=false;vehiclePhysics?.clearControls();}
 function stopVehicle(){resetInput();vehiclePhysics?.stop();physicsAccumulator=0;speed=0;raceStats=null;}

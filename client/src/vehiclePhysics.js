@@ -69,7 +69,7 @@ export class ArcadeVehiclePhysics {
     // Pressing drift alone must not choose an arbitrary steering direction.
     this.drifting = !!input.drift && current.forwardSpeed > 6 && (wasDrifting || Math.abs(turn) > .1);
     if (this.drifting && !wasDrifting) this.driftDirection = Math.sign(turn);
-    if (!this.drifting && wasDrifting) { this.recovery = .65; this.driftDirection = 0; }
+    if (!this.drifting && wasDrifting) { this.recovery = .9; this.driftDirection = 0; }
     this.recovery = Math.max(0, this.recovery - dt);
 
     const grip = clamp(stats.grip, .65, 1.3);
@@ -85,14 +85,21 @@ export class ArcadeVehiclePhysics {
 
     const v = this.body.linvel();
     let vx = v.x, vz = v.z;
-    if (this.drifting) {
-      // Rotate the travel vector behind the nose without inventing lateral energy.
-      const slipTarget = this.driftDirection * .42;
+    if (this.drifting || this.recovery > 0) {
+      // Front-end bite turns the travel line into the bend instead of building
+      // a large sideways lag. Recovery uses the same velocity rotation model.
       const travel = Math.atan2(vx, vz);
+      const slipTarget = this.drifting ? this.driftDirection * .22 : 0;
       const target = current.heading - slipTarget;
-      const next = travel + angleDelta(target, travel) * (1 - Math.exp(-2.4 * grip * dt));
-      const drag = input.gas ? .045 : .14;
-      const speed = Math.max(0, current.speed * Math.exp(-drag * dt) - (input.reverse ? 16 * dt : 0));
+      const bite = this.drifting ? 5.5 * grip : (2.2 + 3.3 * (1 - this.recovery / .9)) * grip;
+      const feedForward = this.drifting ? nextYaw * .65 * dt : 0;
+      const correction = angleDelta(target, travel) * (1 - Math.exp(-bite * dt)) + feedForward;
+      // Cap travel-direction recovery per step; never snap to the nose on release.
+      const maxTurn = (this.drifting ? 2.8 : 1.5) * dt;
+      const next = travel + clamp(correction, -maxTurn, maxTurn);
+      const drag = this.drifting ? (input.gas ? .045 : .14) : .04;
+      const drive = !this.drifting && input.gas ? stats.accel * .40 * dt : 0;
+      const speed = Math.max(0, current.speed * Math.exp(-drag * dt) + drive - (input.reverse ? 16 * dt : 0));
       vx = Math.sin(next) * speed; vz = Math.cos(next) * speed;
     } else {
       const fx = Math.sin(current.heading), fz = Math.cos(current.heading);

@@ -80,3 +80,17 @@ test('class/grade stats still change performance; 60/120 Hz remain comparable', 
   const s60 = run(a, 3, gas, stats, 1 / 60), s120 = run(b, 3, gas);
   assert.ok(Math.abs(s60.speed - s120.speed) < .5);
 });
+
+test('drift bites into the bend without excessive sideslip; release rotates travel gradually', async t => {
+  const p=await vehicle(t); run(p,4,gas);
+  const drift=run(p,1.5,{gas:true,left:true,drift:true});
+  assert.ok(drift.slip > .15 && drift.slip < .5, JSON.stringify(drift));
+  const travelBefore=drift.heading-drift.slip;
+  const released=p.step(1/120,{},stats);
+  const travelAfter=released.heading-released.slip;
+  const difference=Math.atan2(Math.sin(travelAfter-travelBefore),Math.cos(travelAfter-travelBefore));
+  assert.ok(Math.abs(difference)<=1.5/120+.001, JSON.stringify({difference,released}));
+  assert.ok(released.speed>drift.speed*.98,'release must not discard lateral momentum');
+  const recovery=run(p,1.5,gas);
+  assert.ok(Math.abs(recovery.slip)<.12, JSON.stringify(recovery));
+});
