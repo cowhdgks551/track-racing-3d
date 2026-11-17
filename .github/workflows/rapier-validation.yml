@@ -1,0 +1,99 @@
+name: Rapier physics and app builds
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/rapier-arcade-physics]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validation:
+    name: Physics, online protocol and browser tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --ignore-scripts
+      - name: Check JavaScript syntax
+        run: |
+          node --check client/src/main.js
+          node --check client/src/vehiclePhysics.js
+          node --check server/index.js
+      - name: Test actual Rapier WASM and online protocol
+        run: npm test
+      - name: Build browser assets
+        run: npm run build
+      - name: Install browser
+        run: npx playwright install --with-deps chromium
+      - name: Test built game in Chromium
+        run: npm run test:browser
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Rapier-validation-evidence
+          path: |
+            test-results/
+            playwright-report/
+            package-lock.json
+          retention-days: 14
+
+  windows:
+    name: Rapier Windows installer
+    needs: validation
+    if: github.event_name != 'pull_request'
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - run: npm run build
+        env:
+          VITE_GAME_SERVER_URL: https://track-racing-3d.onrender.com
+      - run: npx electron-builder --win nsis --x64 --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TRACK-RACING-3D-Rapier-Windows-x64
+          path: release/*.exe
+          if-no-files-found: error
+          retention-days: 30
+
+  android:
+    name: Rapier Android APK
+    needs: validation
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: npm install
+      - run: npm run build
+        env:
+          VITE_GAME_SERVER_URL: https://track-racing-3d.onrender.com
+      - run: npx cap add android
+      - run: npx cap sync android
+      - name: Build debug APK
+        working-directory: android
+        run: chmod +x gradlew && ./gradlew assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TRACK-RACING-3D-Rapier-Android-APK
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 30

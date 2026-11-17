@@ -13,14 +13,14 @@ const rooms = new Map();
 const MAX_PLAYERS = 10;
 const POINTS = [10,9,8,7,6,5,4,3,2,1];
 
-app.get('/health', (_req,res)=>res.json({ok:true,game:'TRACK RACING 3D',rooms:rooms.size}));
+app.get('/health', (_req,res)=>res.json({ok:true,game:'TRACK RACING 3D',rooms:rooms.size,version:'1.2.0',raceTimeoutMs:1800000}));
 app.use(express.static(path.resolve(__dirname,'../dist')));
 app.get('*',(_req,res)=>res.sendFile(path.resolve(__dirname,'../dist/index.html')));
 
 function send(ws,data){if(ws.readyState===1)ws.send(JSON.stringify(data));}
 function publicPlayers(room){
  return [...room.players.values()].map(p=>({
-  id:p.id,name:p.name,car:p.car,team:p.team,color:p.color,x:p.x,z:p.z,
+  id:p.id,name:p.name,car:p.car,grade:p.grade,team:p.team,color:p.color,x:p.x,z:p.z,
   rotation:p.rotation,lap:p.lap,progress:p.progress,finished:p.finished,
   finishTime:p.finishTime,ready:p.ready,cosmetics:p.cosmetics||null
  }));
@@ -69,7 +69,7 @@ wss.on('connection',ws=>{
    if(room.started)return send(ws,{type:'error',message:'경기가 진행 중인 방에는 입장할 수 없습니다.'});
    if(room.players.size>=MAX_PLAYERS)return send(ws,{type:'error',message:'방 정원이 가득 찼습니다. (최대 10명)'});
    const p={id:ws.id,ws,name:String(msg.name||'Racer').slice(0,14),car:['acceleration','topSpeed','cornering','balance'].includes(msg.car)?msg.car:'balance',
-    team:msg.team==='blue'?'blue':msg.team==='red'?'red':null,cosmetics:msg.cosmetics||null,color:'#ff5b55',x:0,z:0,rotation:0,lap:0,progress:0,finished:false,finishTime:null,ready:false};
+    grade:['D','C','B','A'].includes(msg.grade)?msg.grade:'D',team:msg.team==='blue'?'blue':msg.team==='red'?'red':null,cosmetics:msg.cosmetics||null,color:'#ff5b55',x:0,z:0,rotation:0,lap:0,progress:0,finished:false,finishTime:null,ready:false};
    room.players.set(p.id,p);if(!room.hostId)room.hostId=p.id;ws.roomCode=code;
    send(ws,{type:'joined',id:p.id});
    roomState(room);return;
@@ -82,6 +82,7 @@ wss.on('connection',ws=>{
    player.name=name;
    roomState(room);
   }else if(msg.type==='cosmetics'){
+   if(room.started)return;
    const c=msg.cosmetics||{};player.cosmetics={paint:typeof c.paint==='string'?c.paint:'#ffd447',decal:typeof c.decal==='string'?c.decal:null,position:{x:Math.max(-.8,Math.min(.8,Number(c.position?.x)||0)),z:Math.max(-1.5,Math.min(1.5,Number(c.position?.z)||0)),rotation:((Number(c.position?.rotation)||0)%360)}};
    roomState(room);
   }else if(msg.type==='configure'){
@@ -100,7 +101,7 @@ wss.on('connection',ws=>{
     const count=[...room.players.values()].filter(p=>p.id!==player.id&&p.team===team).length;
     if(count>=5)return send(player.ws,{type:'error',message:'각 팀은 최대 5명까지 참가할 수 있습니다.'});
    }
-   player.car=car;player.team=room.config.mode==='team'?team:null;
+   player.car=car;if(['D','C','B','A'].includes(msg.grade))player.grade=msg.grade;player.team=room.config.mode==='team'?team:null;
    player.color=player.team==='blue'?'#42a5ff':player.team==='red'?'#ff5b55':'#ffd447';
    roomState(room);
   }else if(msg.type==='start'){
@@ -116,11 +117,11 @@ wss.on('connection',ws=>{
    for(const p of room.players.values()){p.lap=0;p.progress=0;p.finished=false;p.finishTime=null;p.x=0;p.z=0;p.ready=true;}
    broadcast(room,{type:'race-start',at:Date.now(),config:room.config});
    roomState(room);
-   room.timeout=setTimeout(()=>endRace(room),240000);
+   room.timeout=setTimeout(()=>endRace(room),1800000);
   }else if(msg.type==='state'){
    if(!room.started||player.finished)return;
-   player.x=Number.isFinite(msg.x)?Math.max(-100,Math.min(100,msg.x)):player.x;
-   player.z=Number.isFinite(msg.z)?Math.max(-100,Math.min(100,msg.z)):player.z;
+   player.x=Number.isFinite(msg.x)?Math.max(-250,Math.min(250,msg.x)):player.x;
+   player.z=Number.isFinite(msg.z)?Math.max(-250,Math.min(250,msg.z)):player.z;
    player.rotation=Number.isFinite(msg.rotation)?msg.rotation:player.rotation;
    player.lap=Number.isFinite(msg.lap)?Math.max(0,Math.min(3,msg.lap)):player.lap;
    player.progress=Number.isFinite(msg.progress)?Math.max(0,Math.min(1,msg.progress)):player.progress;

@@ -1,5 +1,9 @@
 import * as THREE from 'three';
 import './style.css';
+import { createVehiclePhysics } from './vehiclePhysics.js';
+import { trackStrip, createMeterCurve, metersPerSecondToKmh } from './trackGeometry.js';
+import { TRACKS } from './tracks.js';
+import { createCarModel, VEHICLE_SHAPES } from './vehicleModels.js';
 
 const app=document.querySelector('#app');
 app.innerHTML=`
@@ -80,12 +84,7 @@ app.innerHTML=`
 </div></div>`;
 
 const $=id=>document.getElementById(id);
-const TRACKS={
- yeongam:{name:'코리아 인터내셔널 서킷',short:'KIC · YEONGAM',color:0x3b434a,points:[[-48,-5],[-44,-24],[-28,-32],[-9,-31],[12,-30],[34,-26],[46,-17],[49,-3],[42,8],[29,10],[20,4],[12,15],[7,28],[-5,32],[-18,27],[-26,15],[-38,12],[-49,5]]},
- inje:{name:'인제 스피디움',short:'INJE SPEEDIUM',color:0x3c454b,points:[[-42,-4],[-34,-24],[-18,-30],[0,-28],[16,-20],[35,-21],[43,-8],[37,5],[25,8],[20,19],[8,27],[-6,25],[-14,13],[-26,12],[-40,8],[-47,0]]},
- everland:{name:'에버랜드 스피드웨이',short:'EVERLAND SPEEDWAY',color:0x3c454b,points:[[-42,-9],[-35,-25],[-20,-30],[-4,-28],[14,-25],[33,-19],[43,-7],[41,6],[30,16],[15,18],[5,12],[-4,19],[-18,25],[-32,17],[-44,7]]},
- taebaek:{name:'태백 스피드웨이',short:'TAEBAEK SPEEDWAY',color:0x3c454b,points:[[-38,-8],[-34,-24],[-18,-30],[2,-27],[23,-20],[38,-10],[40,4],[28,13],[15,9],[8,20],[-6,28],[-23,23],[-36,12]]}
-};
+
 
 const GRADE_PEAK={D:60,C:65,B:70,A:75};
 const CLASS_RATIOS={
@@ -105,11 +104,11 @@ function getVehicleStats(type=carId,grade=vehicleGrade){
 }
 
 const CLASSES=new Proxy({}, {get:(_t,k)=>getVehicleStats(k,vehicleGrade)});
-let scene,camera,renderer,curve,localCar,ground,trackGroup;
+let scene,camera,renderer,curve,localCar,ground,trackGroup,roadSamples=[];
 let ws=null,myId=null,roomCode='',online=false,joined=false,hostId=null;
 let mode='individual',trackId='yeongam',carId='balance',team=null,players=[];
 let started=false,finished=false,lap=0,progress=0,lastProgress=0,speed=0,heading=0,x=0,z=0;
-let lateralVelocity=0,yawVelocity=0,steeringAngle=0;const wheelBase=2.65;const CAR_VISUAL_SCALE=.88;
+let vehiclePhysics=null,physicsAccumulator=0,raceStats=null;
 let raceStart=0,elapsed=0,sendClock=0,solo=false;
 const keys={left:false,right:false,gas:false,reverse:false,drift:false};
 const remotes=new Map(),clock=new THREE.Clock();
@@ -128,6 +127,7 @@ function currentPaint(type){const id=carInventory(type).paint;return id==='defau
 function cosmeticsFor(type){const e=carInventory(type);return {paint:currentPaint(type),decal:e.decal,position:e.position};}
 function grantCoins(amount){if(!Number.isFinite(amount)||amount<=0)return;wallet.coins+=amount;saveWallet();}
 async function buyItem(kind,id){
+ if(started)return;
  const owned=kind==='paint'?wallet.ownedPaint[shopCar]:wallet.ownedDecal[shopCar];
  if(owned.includes(id)){
   if(kind==='paint')wallet.equipped[shopCar].paint=id;else{wallet.equipped[shopCar].decal=id;selectedDecal=id;}
@@ -155,7 +155,7 @@ function applyLocalCosmetics(){applyCarCosmetics(localCar,carId);send({type:'cos
 async function awardRaceCoins(m){const result=m.results?.find(r=>r.id===myId);if(!result||m.raceId===lastAwardedRace)return;lastAwardedRace=m.raceId||('local-'+Date.now());if(accountUser&&m.raceId){const teamResult=m.teams?.winner==='draw'?'draw':result.team===m.teams?.winner?'win':'loss';const {data,error}=await supabase.rpc('claim_race_reward',{p_race_id:m.raceId,p_mode:m.mode,p_track_id:trackId,p_vehicle_class:carId,p_finish_rank:result.rank||null,p_finished:!!result.finished,p_team_id:result.team||null,p_team_result:teamResult});if(error){$('message').textContent='보상 저장 실패: '+error.message;return;}wallet.coins=data.balance??wallet.coins;await loadCloudAccount();}else grantCoins(result.coins||0);$('message').textContent='레이스 보상 +' +(result.coins||0)+' 코인';}
 let lastAwardedRace=null;
 async function loadCloudAccount(){
- if(!accountUser)return;
+ if(!accountUser||started)return;
  const uid=accountUser.id;
  const [profile,walletRow,vehicles,inventory,tx,races]=await Promise.all([
   supabase.from('player_profiles').select('*').eq('user_id',uid).maybeSingle(),
@@ -165,6 +165,7 @@ async function loadCloudAccount(){
   supabase.from('wallet_transactions').select('*').eq('user_id',uid).order('created_at',{ascending:false}).limit(8),
   supabase.from('player_race_history').select('*').eq('user_id',uid).order('played_at',{ascending:false}).limit(8)
  ]);
+ if(started)return;
  for(const q of [profile,walletRow,vehicles,inventory,tx,races])if(q.error)throw q.error;
  cloudGarage={profile:profile.data,wallet:walletRow.data,vehicles:vehicles.data||[],inventory:inventory.data||[],transactions:tx.data||[],races:races.data||[]};
  const selectedVehicle=cloudGarage.vehicles.find(v=>v.is_selected);if(selectedVehicle){carId=selectedVehicle.vehicle_class;vehicleGrade=selectedVehicle.vehicle_grade||'D';}
@@ -179,15 +180,16 @@ async function loadCloudAccount(){
  }
  updateWalletUI();
  if(profile.data?.nickname)$('nickname').value=profile.data.nickname;else if(accountUser.user_metadata?.nickname)$('nickname').value=accountUser.user_metadata.nickname;
- if(localCar)applyLocalCosmetics();
+ if(localCar){syncLocalCarModel();applyLocalCosmetics();}
  refreshSelections();
 }
 async function renderGarage(){
+ if(started)return; 
  if(!accountUser){alert('차고를 이용하려면 먼저 로그인해주세요.');showPanel('lobby');return;}
  try{await loadCloudAccount();}catch(e){alert('차고 정보를 불러오지 못했습니다: '+e.message);return;}
  $('garageCoins').textContent=wallet.coins;
  $('garageVehicles').innerHTML=cloudGarage.vehicles.map(v=>'<div class="garage-car"><b>'+({acceleration:'가속형',topSpeed:'최고속도형',cornering:'코너링형',balance:'밸런스형'}[v.vehicle_class]||v.vehicle_class)+' · '+v.vehicle_grade+'</b><span>'+(v.is_selected?'선택된 차량':'보유 차량')+'</span><button data-garage-car="'+v.vehicle_class+'" data-garage-grade="'+v.vehicle_grade+'">차량 선택</button></div>').join('');
- $('garageVehicles').querySelectorAll('[data-garage-car]').forEach(b=>b.onclick=()=>{selectCar(b.dataset.garageCar);showPanel('setup');});
+ $('garageVehicles').querySelectorAll('[data-garage-car]').forEach(b=>b.onclick=async()=>{if(started)return;await selectCar(b.dataset.garageCar);await selectGrade(b.dataset.garageGrade);if(!started)showPanel('setup');});
  $('garageInventory').innerHTML=cloudGarage.inventory.length?cloudGarage.inventory.map(v=>'<div class="garage-item"><span>'+(v.cosmetic_catalog?.item_type==='paint'?'🎨':'✦')+'</span><b>'+escapeHtml(v.cosmetic_catalog?.display_name||v.item_id)+'</b><small>'+({acceleration:'가속형',topSpeed:'최고속도형',cornering:'코너링형',balance:'밸런스형'}[v.vehicle_class])+'</small><em>'+(v.is_equipped?'장착 중':'보유')+'</em></div>').join(''):'<p class="hint">아직 구매한 페인트나 문양이 없습니다.</p>';
  const history=[...cloudGarage.transactions.map(t=>({date:t.created_at,label:t.description,amount:t.amount})),...cloudGarage.races.map(r=>({date:r.played_at,label:'레이스 · '+r.track_id+' · '+(r.finish_rank||'DNF')+'위',amount:r.coins_earned}))].sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,8);
  $('garageHistory').innerHTML=history.length?history.map(h=>'<div class="history-row"><span>'+escapeHtml(h.label)+'</span><b class="'+(h.amount<0?'negative':'positive')+'">'+(h.amount>0?'+':'')+h.amount+' 🪙</b></div>').join(''):'<p class="hint">아직 기록이 없습니다.</p>';
@@ -204,7 +206,7 @@ function updateAuthUI(){
  $('signUp').textContent=signupMode?'회원가입 완료':'회원가입';
  $('cancelSignUp').hidden=loggedIn||!signupMode;$('signOut').hidden=!loggedIn;
  $('mainMenu').hidden=!loggedIn;
- $('wallet').hidden=!loggedIn;$('openGarage').hidden=!loggedIn;$('openShop').hidden=!loggedIn;
+ $('wallet').hidden=!loggedIn;$('openGarage').hidden=!loggedIn||started;$('openShop').hidden=!loggedIn||started;
  if(loggedIn){$('nickname').value=cloudGarage?.profile?.nickname||accountUser.user_metadata?.nickname||'Racer';}
  $('accountMessage').textContent=loggedIn?'환영합니다! 게임 모드를 선택하세요.':signupMode?'이메일, 비밀번호(8자 이상), 닉네임(2~14자)을 입력하세요.':'로그인하거나 회원가입하여 시작하세요.';
 }
@@ -238,102 +240,94 @@ async function signUp(){
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const setStatus=t=>$('connection').textContent=t;
 function send(o){if(ws&&ws.readyState===1)ws.send(JSON.stringify(o));}
-function showPanel(id){if(!accountUser&&id!=='lobby')id='lobby';const racing=!id&&started&&!!accountUser;$('openGarage').hidden=racing||!accountUser;$('openShop').hidden=racing||!accountUser;['lobby','setup','results','shop','garage'].forEach(k=>$(k).hidden=k!==id);$('raceControls').hidden=!racing;$('raceHud').hidden=!racing;$('message').hidden=!racing;$('roominfo').hidden=!(id==='setup'||racing);$('leader').hidden=!racing||players.length<2;}
-function makeCar(color,type='balance'){
- const g=new THREE.Group(),paint=new THREE.MeshStandardMaterial({color,roughness:.35,metalness:.12}),dark=new THREE.MeshStandardMaterial({color:0x17212a,roughness:.7});
- const dimensions={acceleration:[2.05,.56,3.65],topSpeed:[1.92,.5,4.15],cornering:[2.18,.54,3.55],balance:[2.1,.58,3.8]}[type]||[2.1,.58,3.8];
- const body=new THREE.Mesh(new THREE.BoxGeometry(...dimensions),paint);body.position.y=.7;body.castShadow=true;g.add(body);g.userData.bodyMaterial=paint;
- const cabin=new THREE.Mesh(new THREE.BoxGeometry(1.5,.62,1.7),new THREE.MeshStandardMaterial({color:0x9fc2ce,metalness:.2,roughness:.25}));cabin.position.set(0,1.23,-.18);cabin.castShadow=true;g.add(cabin);
- for(const sx of [-1.06,1.06])for(const sz of [-1.2,1.2]){const w=new THREE.Mesh(new THREE.BoxGeometry(.34,.58,.8),dark);w.position.set(sx,.44,sz);g.add(w);}
- const spoilerWidth=type==='cornering'?2.2:type==='topSpeed'?1.65:2.05;
- const spoiler=new THREE.Mesh(new THREE.BoxGeometry(spoilerWidth,.12,.3),dark);spoiler.position.set(0,1.05,-1.72);g.add(spoiler);
- if(type==='acceleration'){const splitter=new THREE.Mesh(new THREE.BoxGeometry(2.15,.1,.38),dark);splitter.position.set(0,.52,1.88);g.add(splitter);}
- if(type==='topSpeed'){const fin=new THREE.Mesh(new THREE.BoxGeometry(.12,.34,.9),dark);fin.position.set(0,1.18,-1.35);g.add(fin);}
- g.scale.setScalar(CAR_VISUAL_SCALE);
- return g;
+function showPanel(id){if(started&&id)return; if(!accountUser&&id!=='lobby')id='lobby';const racing=!id&&started&&!!accountUser;$('openGarage').hidden=racing||!accountUser;$('openShop').hidden=racing||!accountUser;['lobby','setup','results','shop','garage'].forEach(k=>$(k).hidden=k!==id);$('raceControls').hidden=!racing;$('raceHud').hidden=!racing;$('message').hidden=!racing;$('roominfo').hidden=!(id==='setup'||racing);$('leader').hidden=!racing||players.length<2;}
+function makeCar(color,type='balance'){return createCarModel(color,type);}
+function syncLocalCarModel(){
+ if(!localCar||localCar.userData.vehicleClass===carId)return;
+ const next=makeCar(0xffd447,carId);next.position.copy(localCar.position);next.rotation.copy(localCar.rotation);
+ scene.remove(localCar);localCar=next;scene.add(localCar);applyCarCosmetics(localCar,carId);
 }
 function initScene(){
  scene=new THREE.Scene();scene.background=new THREE.Color(0xb8d4df);scene.fog=new THREE.Fog(0xb8d4df,100,230);
  camera=new THREE.PerspectiveCamera(65,innerWidth/innerHeight,.1,500);
  renderer=new THREE.WebGLRenderer({antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setSize(innerWidth,innerHeight);renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;$('game').prepend(renderer.domElement);
  scene.add(new THREE.HemisphereLight(0xffffff,0x60715b,1.8));const sun=new THREE.DirectionalLight(0xffffff,2);sun.position.set(-35,55,25);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);scene.add(sun);
- ground=new THREE.Mesh(new THREE.PlaneGeometry(500,500),new THREE.MeshStandardMaterial({color:0x719e6b,roughness:1}));ground.rotation.x=-Math.PI/2;ground.position.y=-.16;ground.receiveShadow=true;scene.add(ground);
+ ground=new THREE.Mesh(new THREE.PlaneGeometry(12000,12000),new THREE.MeshStandardMaterial({color:0x719e6b,roughness:1}));ground.rotation.x=-Math.PI/2;ground.position.y=-.16;ground.receiveShadow=true;scene.add(ground);
  localCar=makeCar(0xffd447,carId);scene.add(localCar);applyCarCosmetics(localCar,carId);buildTrack(trackId);resetCar();
  addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
  animate();
 }
 function buildTrack(id){
- trackId=id;if(trackGroup)scene.remove(trackGroup);trackGroup=new THREE.Group();scene.add(trackGroup);
- const data=TRACKS[id],raw=data.points.map(([a,b])=>new THREE.Vector3(a,0,b));
- curve=new THREE.CatmullRomCurve3(raw,true,'catmullrom',.15);
- const n=320,width=18,verts=[],indices=[];
- for(let i=0;i<=n;i++){const p=curve.getPointAt(i/n),t=curve.getTangentAt(i/n),normal=new THREE.Vector3(-t.z,0,t.x).normalize();
-  for(const s of [-1,1]){const q=p.clone().addScaledVector(normal,s*width/2);verts.push(q.x,.02,q.z);}
-  if(i<n){const k=i*2;indices.push(k,k+1,k+2,k+1,k+3,k+2);}
+ trackId=id;
+ if(trackGroup){
+  const geometries=new Set(),materials=new Set();
+  trackGroup.traverse(o=>{if(o.geometry)geometries.add(o.geometry);if(o.material)materials.add(o.material);});
+  scene.remove(trackGroup);geometries.forEach(g=>g.dispose());materials.forEach(m=>m.dispose());
  }
- const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(verts,3));geo.setIndex(indices);geo.computeVertexNormals();
- const road=new THREE.Mesh(geo,new THREE.MeshStandardMaterial({color:data.color,roughness:.96,side:THREE.DoubleSide}));road.receiveShadow=true;trackGroup.add(road);
- for(const side of [-1,1]){const pts=[];for(let i=0;i<=n;i++){const p=curve.getPointAt(i/n),t=curve.getTangentAt(i/n),nn=new THREE.Vector3(-t.z,0,t.x).normalize();p.addScaledVector(nn,side*(width/2-.18));p.y=.09;pts.push(p);}
-  trackGroup.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts),n,.14,5,true),new THREE.MeshStandardMaterial({color:0xf1eee3})));
+ trackGroup=new THREE.Group();scene.add(trackGroup);
+ const data=TRACKS[id];
+ curve=createMeterCurve(data.points,data.lengthMeters);
+ roadSamples=Array.from({length:2049},(_,i)=>curve.getPointAt(i/2048));
+ const surface=(from,to,y,color)=>{
+  const mesh=new THREE.Mesh(trackStrip(curve,from,to,y,Math.ceil(data.lengthMeters/4)),new THREE.MeshStandardMaterial({color,roughness:.95,side:THREE.DoubleSide}));
+  mesh.receiveShadow=true;trackGroup.add(mesh);
+ };
+ surface(-9,9,.02,data.color);
+ // Flat, continuous verges and white borders; remove floating tubes and scattered props.
+ for(const side of [-1,1]){
+  surface(side*9,side*10.1,.025,0xa8a69b);
+  surface(side*8.8,side*9,.035,0xf1eee3);
  }
- const centerMat=new THREE.MeshStandardMaterial({color:0xe7e5dc});
- for(let i=0;i<64;i++){const p=curve.getPointAt(i/64),t=curve.getTangentAt(i/64),d=new THREE.Mesh(new THREE.BoxGeometry(.16,.035,1.1),centerMat);d.position.set(p.x,.075,p.z);d.rotation.y=-Math.atan2(t.z,t.x);trackGroup.add(d);}
- // Start/finish checker strip
+ const obstacles=[],wallMaterial=new THREE.MeshStandardMaterial({color:0x89959e,roughness:.8});
+ const samples=Array.from({length:400},(_,i)=>curve.getPointAt(i/400));
+ const roadClear=(p)=>samples.every(s=>Math.hypot(s.x-p.x,s.z-p.z)>10.3);
+ const edge=(t,side)=>{
+  const p=curve.getPointAt(t),tan=curve.getTangentAt(t);
+  return p.add(new THREE.Vector3(-tan.z,0,tan.x).normalize().multiplyScalar(side*11.5));
+ };
+ const segments=Math.ceil(data.lengthMeters/6);
+ const walls=new THREE.InstancedMesh(new THREE.BoxGeometry(.22,.75,1),wallMaterial,segments*2);const wallTransform=new THREE.Object3D();let wallCount=0;
+ for(const side of [-1,1])for(let i=0;i<segments;i++){
+  const p=edge(i/segments,side),q=edge((i+1)/segments,side),mid=p.clone().add(q).multiplyScalar(.5);
+  // Narrow infield bends must not put the neighboring guardrail across the road.
+  if(!roadClear(p)||!roadClear(q)||!roadClear(mid))continue;
+  const depth=p.distanceTo(q)+.06,rotation=Math.atan2(q.x-p.x,q.z-p.z);
+  wallTransform.position.set(mid.x,.4,mid.z);wallTransform.rotation.y=rotation;wallTransform.scale.set(1,1,depth);wallTransform.updateMatrix();walls.setMatrixAt(wallCount++,wallTransform.matrix);
+  obstacles.push({x:mid.x,y:.4,z:mid.z,width:.22,height:.75,depth,rotation});
+ }
+ walls.count=wallCount;walls.castShadow=true;walls.computeBoundingSphere();trackGroup.add(walls);
  const start=curve.getPointAt(0),tan=curve.getTangentAt(0),normal=new THREE.Vector3(-tan.z,0,tan.x).normalize();
- for(let i=0;i<10;i++)for(let j=0;j<2;j++){const tile=new THREE.Mesh(new THREE.BoxGeometry(width/10,.05,.65),new THREE.MeshStandardMaterial({color:(i+j)%2?0x20252a:0xffffff}));const offset=(i-4.5)*width/10;tile.position.copy(start).addScaledVector(normal,offset).addScaledVector(tan,j*.65-.32);tile.position.y=.11;tile.rotation.y=-Math.atan2(tan.z,tan.x);trackGroup.add(tile);}
- // Trackside 3D environment: kerbs, safety barriers, trees, stands and pit buildings.
- const curbRed=new THREE.MeshStandardMaterial({color:0xc82d34,roughness:.82});
- const curbWhite=new THREE.MeshStandardMaterial({color:0xf4f1e9,roughness:.8});
- const barrierMat=new THREE.MeshStandardMaterial({color:0xa8b2b9,metalness:.25,roughness:.58});
- const trunkMat=new THREE.MeshStandardMaterial({color:0x735338,roughness:1});
- const leafMat=new THREE.MeshStandardMaterial({color:0x315b36,roughness:1});
- const buildingMat=new THREE.MeshStandardMaterial({color:0xc9d1d5,metalness:.15,roughness:.75});
- const windowMat=new THREE.MeshStandardMaterial({color:0x35566a,metalness:.35,roughness:.25});
- const addBox=(w,h,d,mat,px,py,pz,rotation=0)=>{const mesh=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);mesh.position.set(px,py,pz);mesh.rotation.y=rotation;mesh.castShadow=true;mesh.receiveShadow=true;trackGroup.add(mesh);return mesh;};
- for(let i=0;i<160;i++){
-  const t=i/160,p=curve.getPointAt(t),tangent=curve.getTangentAt(t),normal=new THREE.Vector3(-tangent.z,0,tangent.x).normalize(),rot=-Math.atan2(tangent.z,tangent.x);
-  for(const side of [-1,1]){
-   const edge=p.clone().addScaledVector(normal,side*9.15);
-   addBox(.78,.12,1.05,i%6<3?curbRed:curbWhite,edge.x,.12,edge.z,rot);
-   if(i%3===0){const b=p.clone().addScaledVector(normal,side*12.2);addBox(.18,.9,2.4,barrierMat,b.x,.55,b.z,rot);}
-  }
+ const checker=[new THREE.MeshStandardMaterial({color:0x20252a}),new THREE.MeshStandardMaterial({color:0xffffff})];
+ for(let i=0;i<10;i++)for(let j=0;j<2;j++){
+  const tile=new THREE.Mesh(new THREE.BoxGeometry(1.8,.025,.65),checker[(i+j)%2]);
+  tile.position.copy(start).addScaledVector(normal,(i-4.5)*1.8).addScaledVector(tan,j*.65-.32);tile.position.y=.055;
+  tile.rotation.y=Math.atan2(tan.x,tan.z);trackGroup.add(tile);
  }
- // Deterministic placement keeps every player's scenery consistent.
- for(let i=0;i<85;i++){
-  const t=((i*37)%89)/89,p=curve.getPointAt(t),tangent=curve.getTangentAt(t),normal=new THREE.Vector3(-tangent.z,0,tangent.x).normalize();
-  const side=i%2?1:-1,offset=19+(i*13%29),pos=p.clone().addScaledVector(normal,side*offset);
-  const height=2.6+(i*7%6)*.42;
-  addBox(.38,height,.38,trunkMat,pos.x,height/2,pos.z);
-  const canopy=new THREE.Mesh(new THREE.ConeGeometry(1.3+(i%4)*.2,3.4+(i%3)*.4,6),leafMat);canopy.position.set(pos.x,height+1,pos.z);canopy.castShadow=true;trackGroup.add(canopy);
- }
- for(let i=0;i<3;i++){
-  const t=(.02+i*.34)%1,p=curve.getPointAt(t),tangent=curve.getTangentAt(t),normal=new THREE.Vector3(-tangent.z,0,tangent.x).normalize(),pos=p.clone().addScaledVector(normal,19);
-  const rot=-Math.atan2(tangent.z,tangent.x);
-  addBox(17,3.5,5,buildingMat,pos.x,1.75,pos.z,rot);
-  addBox(16.5,1.25,5.15,windowMat,pos.x,2.35,pos.z,rot);
-  addBox(19,.28,6,barrierMat,pos.x,3.65,pos.z,rot);
- }
- for(let i=0;i<4;i++){
-  const t=(.14+i*.22)%1,p=curve.getPointAt(t),tangent=curve.getTangentAt(t),normal=new THREE.Vector3(-tangent.z,0,tangent.x).normalize(),pos=p.clone().addScaledVector(normal,-24);
-  const rot=-Math.atan2(tangent.z,tangent.x);
-  addBox(15,2.2,5,barrierMat,pos.x,1.1,pos.z,rot);
-  addBox(15,.4,7,buildingMat,pos.x,2.6,pos.z,rot);
- }
- // Simple scenery markers
- const postMat=new THREE.MeshStandardMaterial({color:0xf6f0df});
- for(let i=0;i<24;i++){const p=curve.getPointAt(i/24),t=curve.getTangentAt(i/24),nn=new THREE.Vector3(-t.z,0,t.x).normalize();p.addScaledVector(nn,sideSign(i)*17);const post=new THREE.Mesh(new THREE.BoxGeometry(.5,1.8,.5),postMat);post.position.set(p.x,.9,p.z);trackGroup.add(post);}
+ vehiclePhysics.setObstacles(obstacles);
 }
-function sideSign(i){return i%2?1:-1;}
-function nearest(px,pz){let best=0,dist=Infinity;for(let i=0;i<400;i++){const p=curve.getPointAt(i/400),d=(p.x-px)**2+(p.z-pz)**2;if(d<dist){dist=d;best=i/400;}}return {progress:best,dist:Math.sqrt(dist),point:curve.getPointAt(best)};}
-function resetInput(){for(const k of Object.keys(keys))keys[k]=false;}
+function nearest(px,pz){
+ let dist2=Infinity,progress=0,point=null;
+ for(let i=0;i<roadSamples.length-1;i++){
+  const a=roadSamples[i],b=roadSamples[i+1],dx=b.x-a.x,dz=b.z-a.z;
+  const t=clamp(((px-a.x)*dx+(pz-a.z)*dz)/(dx*dx+dz*dz||1),0,1);
+  const x=a.x+t*dx,z=a.z+t*dz,d=(px-x)**2+(pz-z)**2;
+  if(d<dist2){dist2=d;progress=(i+t)/(roadSamples.length-1);point={x,z};}
+ }
+ return {progress,dist:Math.sqrt(dist2),point};
+}
+function resetInput(){for(const k of Object.keys(keys))keys[k]=false;vehiclePhysics?.clearControls();}
+function stopVehicle(){resetInput();vehiclePhysics?.stop();physicsAccumulator=0;speed=0;raceStats=null;}
 function resetCar(){
- resetInput();lateralVelocity=0;yawVelocity=0;steeringAngle=0;physicsAccumulator=0;driftAngle=0;driftDirection=0;wasDrifting=false;
- const p=curve.getPointAt(.005),t=curve.getTangentAt(.005);x=p.x;z=p.z;heading=Math.atan2(t.x,t.z);speed=0;lap=0;progress=.005;lastProgress=.005;finished=false;localCar.position.set(x,0,z);localCar.rotation.y=heading;
+ syncLocalCarModel();
+ resetInput();physicsAccumulator=0;
+ const p=curve.getPointAt(0),t=curve.getTangentAt(0);x=p.x;z=p.z;heading=Math.atan2(t.x,t.z);speed=0;lap=0;progress=0;lastProgress=0;finished=false;localCar.position.set(x,0,z);localCar.rotation.y=heading;
+ const shape=VEHICLE_SHAPES[carId];vehiclePhysics.setShape(shape.width,shape.length);
+ vehiclePhysics.reset(x,z,heading);
  $('lap').textContent='0 / 3';$('time').textContent='00:00.0';$('position').textContent='-';
 }
 function connect(){
  const configuredServer=import.meta.env.VITE_GAME_SERVER_URL;const proto=location.protocol==='https:'?'wss':'ws';const socketBase=configuredServer?configuredServer.replace(/^http/,'ws').replace(/\/$/,''):proto+'://'+location.host;ws=new WebSocket(socketBase+'/ws');
- ws.onopen=()=>send({type:'join',name:$('nickname').value.trim()||'Racer',room:$('room').value.trim()||'SPEED',car:carId,team,cosmetics:cosmeticsFor(carId)});
+ ws.onopen=()=>send({type:'join',name:$('nickname').value.trim()||'Racer',room:roomCode,car:carId,grade:vehicleGrade,team,cosmetics:cosmeticsFor(carId)});
  ws.onmessage=e=>{const m=JSON.parse(e.data);
   if(m.type==='joined'){myId=m.id;online=true;joined=true;setStatus('● ONLINE');}
   if(m.type==='error')notify(m.message);
@@ -347,7 +341,7 @@ function connect(){
 }
 function applyRoom(m){
  hostId=m.hostId;mode=m.config.mode;trackId=m.config.track;players=m.players;
- const self=players.find(p=>p.id===myId);if(self){carId=self.car;team=self.team;}
+ const self=players.find(p=>p.id===myId);if(self){carId=self.car;if(self.grade&&GRADE_PEAK[self.grade])vehicleGrade=self.grade;team=self.team;}
  if(trackId!==activeTrack){activeTrack=trackId;buildTrack(trackId);resetCar();}
  $('teamSelect').hidden=mode!=='team';
  $('hostHint').textContent=myId===hostId?'방장입니다. 설정을 선택하고 레이스를 시작하세요.':'방장이 레이스를 시작할 때까지 기다려주세요.';
@@ -370,7 +364,8 @@ function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':
 function updateRemoteData(list){
  players=list||players;const ids=new Set();
  for(const p of players){if(p.id===myId)continue;ids.add(p.id);let r=remotes.get(p.id);
-  if(!r){r={car:makeCar(p.color||0x42a5ff),data:p};scene.add(r.car);remotes.set(p.id,r);}
+  if(r&&r.car.userData.vehicleClass!==p.car){scene.remove(r.car);remotes.delete(p.id);r=null;}
+  if(!r){r={car:makeCar(p.color||0x42a5ff,p.car),data:p};scene.add(r.car);remotes.set(p.id,r);}
   r.data=p;r.car.visible=true;
   const cosmeticSig=JSON.stringify(p.cosmetics||null);
   if(r.car.userData.cosmeticSignature!==cosmeticSig){
@@ -387,10 +382,12 @@ function updateRemoteData(list){
  $('position').textContent=ranked.findIndex(p=>p.id===myId)+1||'-';
 }
 function startRace(){
+ if(!vehiclePhysics)return notify('물리엔진을 준비 중입니다.');
+ raceStats=Object.freeze({...getVehicleStats(carId,vehicleGrade)});
  started=true;finished=false;elapsed=0;raceStart=performance.now();resetCar();$('message').textContent='GO! 3랩을 완주하세요!';showPanel('');
 }
 function finishRace(){
- if(finished)return;finished=true;started=false;speed=0;resetInput();elapsed=performance.now()-raceStart;
+ if(finished)return;finished=true;started=false;stopVehicle();
  if(timeAttackMode){saveTimeAttackRecord();$('message').textContent='타임어택 완주! '+formatTime(elapsed);showPanel('setup');return;}
  $('message').textContent='FINISH! 결과를 기다리는 중';
  if(solo){showResults({mode:'individual',results:[{id:myId,name:$('nickname').value.trim()||'Racer',team:null,finished:true,rank:1,points:10,coins:0}],raceId:'solo-'+Date.now(),teams:{red:0,blue:0,winner:'draw'}});}
@@ -398,7 +395,7 @@ function finishRace(){
 }
 function showResults(m){
  awardRaceCoins(m);
- started=false;finished=true;resetInput();showPanel('results');$('leader').hidden=true;
+ started=false;finished=true;stopVehicle();showPanel('results');$('leader').hidden=true;
  if(m.mode==='team'){
   const t=m.teams;$('teamScore').innerHTML=`<div class="scoreboard"><div class="red-score"><small>RED TEAM</small><b>${t.red}</b></div><div class="versus">VS</div><div class="blue-score"><small>BLUE TEAM</small><b>${t.blue}</b></div></div><div class="winner">${t.winner==='draw'?'무승부':t.winner==='red'?'🔴 레드팀 승리':'🔵 블루팀 승리'}</div>`;
  }else $('teamScore').innerHTML='';
@@ -432,6 +429,7 @@ function renderVehicleRatings(){
  document.querySelectorAll('[data-grade]').forEach(b=>b.classList.toggle('active',b.dataset.grade===vehicleGrade));
 }
 async function selectGrade(grade){
+ if(started)return notify('경기 중에는 차량 등급을 변경할 수 없습니다.');
  if(!GRADE_PEAK[grade])return;
  if(accountUser&&!cloudGarage?.vehicles?.some(v=>v.vehicle_class===carId&&v.vehicle_grade===grade)){alert('먼저 상점에서 해당 등급 차량을 구매해주세요.');return;}
  vehicleGrade=grade;renderVehicleRatings();refreshSelections();
@@ -468,83 +466,43 @@ async function saveTimeAttackRecord(){
  $('message').textContent='기록 등록 완료! '+formatTime(elapsed);await loadTimeAttackBoard();
 }
 
-function startLocal(){started=true;finished=false;elapsed=0;raceStart=performance.now();resetCar();showPanel('');$('message').textContent='GO! 3랩을 완주하세요!';}
-// Fixed-step dynamic bicycle simulation: front/rear slip angles, saturated tyre forces,
-// independent lateral velocity and yaw inertia. Handbrake sharply reduces rear traction.
-const vehiclePhysics={mass:1280,inertia:2050,lf:1.25,lr:1.40,cornerFront:68000,cornerRear:76000};
-let physicsAccumulator=0;
-// Kart-style arcade drift: deliberate yaw, trailing velocity and guaranteed speed loss.
-// Inspired by the control feel of classic kart racers; not their proprietary physics.
-let driftAngle=0,driftDirection=0,wasDrifting=false;
+function startLocal(){if(!vehiclePhysics)return notify('물리엔진을 준비 중입니다.');raceStats=Object.freeze({...getVehicleStats(carId,vehicleGrade)});started=true;finished=false;elapsed=0;raceStart=performance.now();resetCar();showPanel('');$('message').textContent='GO! 3랩을 완주하세요!';}
+// Rapier owns rigid-body integration and environment collision response.
 function stepVehicle(dt,stats){
- const steerInput=(keys.left?1:0)-(keys.right?1:0);
- const activeDrift=keys.drift&&speed>5;
- const justStarted=activeDrift&&!wasDrifting;
- if(justStarted){
-  driftDirection=steerInput||Math.sign(steeringAngle)||1;
-  driftAngle=0;
+ const before=nearest(x,z);
+ const state=vehiclePhysics.step(dt,keys,stats,before.dist);
+ x=state.x;z=state.z;heading=state.heading;speed=state.forwardSpeed;
+ let near=nearest(x,z);
+ if(near.dist>22){
+  // Recovery never restores pre-impact speed or carries steering into the respawn.
+  vehiclePhysics.reset(near.point.x,near.point.z,heading);resetInput();
+  x=near.point.x;z=near.point.z;speed=0;near=nearest(x,z);
  }
- if(!activeDrift&&wasDrifting)driftDirection=0;
- wasDrifting=activeDrift;
- const maxSteer=.42/(1+Math.abs(speed)*.009);
- steeringAngle+=(steerInput*maxSteer-steeringAngle)*Math.min(1,dt*10);
- const throttle=keys.gas?1:0,reverse=keys.reverse?1:0;
- const engine=throttle*stats.accel*.40;
- const back=reverse*stats.accel*.33;
- const resistance=.22+.012*Math.abs(speed)+.002*speed*speed;
- // Drift has a hard speed-loss budget even at full throttle.
- const driftLoss=activeDrift?(1.2+.025*Math.max(0,speed)):0;
- const rawAcceleration=engine-back-Math.sign(speed)*(resistance+driftLoss);
- const acceleration=activeDrift?Math.min(-.65,rawAcceleration):rawAcceleration;
- speed=clamp(speed+acceleration*dt,-stats.max*.30,stats.max);
- if(!throttle&&!reverse&&Math.abs(speed)<.15)speed=0;
- const grip=clamp(stats.grip,.65,1.3);
- const ordinaryYaw=speed*Math.tan(steeringAngle)/wheelBase*.48;
- // A held drift rotates the nose substantially, while velocity trails behind.
- const driftYaw=driftDirection*(.48+Math.min(Math.abs(speed),36)*.013)
-                 +steerInput*.38;
- const targetYaw=activeDrift?driftYaw:ordinaryYaw;
- yawVelocity+=(targetYaw-yawVelocity)*Math.min(1,dt*(activeDrift?6.5:7.5*grip));
- if(activeDrift){
-  driftAngle=clamp(driftAngle+dt*(.55+.008*Math.abs(speed)),0,.72);
-  // Velocity vector lags behind the nose: visible side-slip in corners.
-  const sideTarget=-driftDirection*Math.abs(speed)*Math.sin(driftAngle);
-  lateralVelocity+=(sideTarget-lateralVelocity)*Math.min(1,dt*4.5);
- }else{
-  driftAngle=Math.max(0,driftAngle-dt*2.4);
-  lateralVelocity*=Math.exp(-dt*(5+grip*2));
- }
- heading+=yawVelocity*dt;
- x+=(Math.sin(heading)*speed+Math.cos(heading)*lateralVelocity)*dt;
- z+=(Math.cos(heading)*speed-Math.sin(heading)*lateralVelocity)*dt;
- const near=nearest(x,z);
- if(near.dist>9.5){speed*=Math.exp(-dt*1.25);lateralVelocity*=Math.exp(-dt*2);}
- if(near.dist>20){x=near.point.x;z=near.point.z;speed*=.15;lateralVelocity=0;yawVelocity=0;driftAngle=0;}
  return near;
 }
 function update(dt){
- const stats=getVehicleStats(carId,vehicleGrade);
+ const stats=raceStats||getVehicleStats(carId,vehicleGrade);
  if(started){
   physicsAccumulator+=dt;
   let near=nearest(x,z),steps=0;
-  while(physicsAccumulator>=1/120&&steps<6){
+  while(physicsAccumulator>=1/120&&steps<30){
    near=stepVehicle(1/120,stats);physicsAccumulator-=1/120;steps++;
   }
-  if(steps===6)physicsAccumulator=0;
+  if(steps===30)physicsAccumulator=0;
+  elapsed+=steps*(1000/120);
   const p=near.progress;
   if(lastProgress>.88&&p<.12&&speed>2.5){lap++;$('lap').textContent=`${lap} / 3`;lastProgress=p;if(lap>=3)finishRace();}
   else if(p>lastProgress-.12)lastProgress=p;
   progress=p;
-  elapsed=performance.now()-raceStart;
   $('time').textContent=formatTime(elapsed);
-  sendClock+=dt;if(online&&sendClock>.08){sendClock=0;send({type:'state',x,z,rotation:heading,lap,progress});}
+  sendClock+=dt;if(online&&sendClock>.08){sendClock=0;send({type:'state',x:x/100,z:z/100,rotation:heading,lap,progress});}
  }
- $('speed').textContent=Math.round(Math.abs(speed)*4.2);
+ $('speed').textContent=Math.round(metersPerSecondToKmh(vehiclePhysics.state().speed));
  localCar.position.set(x,0,z);localCar.rotation.y=heading;
- for(const r of remotes.values()){const d=r.data;r.car.position.lerp(new THREE.Vector3(d.x,0,d.z),.28);r.car.rotation.y=d.rotation;}
+ for(const r of remotes.values()){const d=r.data;r.car.position.lerp(new THREE.Vector3(d.x*100,0,d.z*100),.28);r.car.rotation.y=d.rotation;}
 }
 function formatTime(ms){const s=ms/1000;return String(Math.floor(s/60)).padStart(2,'0')+':'+String(Math.floor(s%60)).padStart(2,'0')+'.'+Math.floor(s%1*10);}
-function animate(){requestAnimationFrame(animate);const dt=Math.min(clock.getDelta(),.04);if(joined)update(dt);
+function animate(){requestAnimationFrame(animate);const dt=Math.min(clock.getDelta(),.25);if(joined)update(dt);
  const target=new THREE.Vector3(x,0,z),racing=started;
  const followDistance=racing?6.1:11,followHeight=racing?3.9:7.5;
  const behind=new THREE.Vector3(-Math.sin(heading)*followDistance,followHeight,-Math.cos(heading)*followDistance);
@@ -554,8 +512,9 @@ function hold(id,key){const el=$(id),down=e=>{e.preventDefault();if(!started)ret
 hold('left','left');hold('right','right');hold('gas','gas');hold('reverse','reverse');hold('drift','drift');
 addEventListener('keydown',e=>{if(e.target?.closest?.('input,textarea,select,[contenteditable]')||!started||!accountUser)return;if(['ArrowLeft','a','A'].includes(e.key))keys.left=true;if(['ArrowRight','d','D'].includes(e.key))keys.right=true;if(['ArrowUp','w','W'].includes(e.key))keys.gas=true;if(['ArrowDown','s','S'].includes(e.key))keys.reverse=true;if([' ','Shift'].includes(e.key)){e.preventDefault();keys.drift=true;}});
 addEventListener('blur',resetInput);
-addEventListener('keyup',e=>{if(e.target?.closest?.('input,textarea,select,[contenteditable]')||!started||!accountUser)return;if(['ArrowLeft','a','A'].includes(e.key))keys.left=false;if(['ArrowRight','d','D'].includes(e.key))keys.right=false;if(['ArrowUp','w','W'].includes(e.key))keys.gas=false;if(['ArrowDown','s','S'].includes(e.key))keys.reverse=false;if([' ','Shift'].includes(e.key))keys.drift=false;});
-$('join').onclick=()=>{if(!accountUser)return notify('먼저 로그인해주세요.');if(joined)return;roomCode=$('room').value.trim().toUpperCase()||'SPEED';connect();};
+document.addEventListener('visibilitychange',()=>{if(document.hidden)resetInput();});
+addEventListener('keyup',e=>{if(['ArrowLeft','a','A'].includes(e.key))keys.left=false;if(['ArrowRight','d','D'].includes(e.key))keys.right=false;if(['ArrowUp','w','W'].includes(e.key))keys.gas=false;if(['ArrowDown','s','S'].includes(e.key))keys.reverse=false;if([' ','Shift'].includes(e.key))keys.drift=false;});
+$('join').onclick=()=>{if(!vehiclePhysics)return notify('물리엔진을 준비 중입니다.');if(!accountUser)return notify('먼저 로그인해주세요.');if(joined)return;roomCode=('M'+($('room').value.trim().toUpperCase()||'SPEED')).slice(0,8);connect();};
 function saveNickname(){
  const value=$('nicknameEdit').value.trim();
  if(!value){alert('닉네임을 입력해주세요.');return;}
@@ -568,26 +527,31 @@ function saveNickname(){
 $('saveNickname').onclick=saveNickname;
 $('nicknameEdit').addEventListener('keydown',e=>{if(e.key==='Enter')saveNickname();});
 
-$('solo').onclick=()=>{if(!accountUser)return;timeAttackMode=false;solo=true;joined=true;online=false;myId='local';mode='individual';$('nicknameEdit').value=$('nickname').value.trim()||'Racer';showPanel('setup');setStatus('● PRACTICE');$('roominfo').textContent='PRACTICE MODE';$('roster').innerHTML='<span class="roster-chip">🏎 나</span>';$('rosterCount').textContent='1 / 1';$('hostHint').textContent='혼자 연습 모드입니다.';$('startRace').disabled=false;};
+$('solo').onclick=()=>{if(!accountUser)return;timeAttackMode=false;solo=true;joined=true;online=false;myId='local';mode='individual';$('nicknameEdit').value=$('nickname').value.trim()||'Racer';showPanel('setup');setStatus('● PRACTICE');$('roominfo').textContent='PRACTICE · '+(TRACKS[trackId].lengthMeters/1000).toFixed(3)+' km';$('roster').innerHTML='<span class="roster-chip">🏎 나</span>';$('rosterCount').textContent='1 / 1';$('hostHint').textContent='혼자 연습 모드입니다.';$('startRace').disabled=false;};
 $('timeAttack').onclick=async()=>{if(!accountUser)return;timeAttackMode=true;$('timeAttackRecords').hidden=false;solo=true;joined=true;online=false;myId='local';mode='individual';$('nicknameEdit').value=$('nickname').value.trim()||'Racer';$('hostHint').textContent='3랩 타임어택 · 전체 기록 랭킹에 도전하세요.';$('startRace').textContent='타임어택 시작';$('startRace').disabled=false;showPanel('setup');setStatus('● TIME ATTACK');$('roominfo').textContent='TIME ATTACK · SOLO';await loadCloudAccount().catch(()=>{});renderVehicleShop();await loadTimeAttackBoard();};
 $('refreshRecords').onclick=loadTimeAttackBoard;
-$('backLobby').onclick=()=>{if(ws)ws.close();$('timeAttackRecords').hidden=true;joined=false;solo=false;timeAttackMode=false;$('startRace').textContent='3랩 레이스 시작';showPanel('lobby');setStatus('● OFFLINE');};
+$('backLobby').onclick=()=>{stopVehicle();started=false;if(ws)ws.close();$('timeAttackRecords').hidden=true;joined=false;solo=false;timeAttackMode=false;$('startRace').textContent='3랩 레이스 시작';showPanel('lobby');setStatus('● OFFLINE');};
 document.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>{if(myId!==hostId&&!solo)return;setMode(b.dataset.mode);});
 document.querySelectorAll('[data-track]').forEach(b=>b.onclick=()=>{if(myId!==hostId&&!solo)return;setTrack(b.dataset.track);if(timeAttackMode)loadTimeAttackBoard();});
 document.querySelectorAll('[data-car]').forEach(b=>b.onclick=()=>selectCar(b.dataset.car));
 document.querySelectorAll('[data-team]').forEach(b=>b.onclick=()=>selectTeam(b.dataset.team));
 $('startRace').onclick=()=>{if(solo){startLocal();return;}if(myId===hostId)send({type:'start'});};
 $('again').onclick=()=>{showPanel('setup');if(solo){resetCar();$('startRace').disabled=false;}else send({type:'restart'});};
-$('signIn').onclick=signIn;$('signUp').onclick=signUp;$('cancelSignUp').onclick=()=>{signupMode=false;updateAuthUI();$('accountEmail').focus();};$('signOut').onclick=async()=>{if(ws)ws.close();joined=false;started=false;solo=false;timeAttackMode=false;await supabase.auth.signOut();accountUser=null;cloudGarage=null;signupMode=false;updateAuthUI();showPanel('lobby');};
-supabase.auth.onAuthStateChange((_event,session)=>{const next=session?.user||null;if(next?.id===accountUser?.id)return;accountUser=next;if(!next){cloudGarage=null;joined=false;started=false;showPanel('lobby');}updateAuthUI();});
+$('signIn').onclick=signIn;$('signUp').onclick=signUp;$('cancelSignUp').onclick=()=>{signupMode=false;updateAuthUI();$('accountEmail').focus();};$('signOut').onclick=async()=>{stopVehicle();if(ws)ws.close();joined=false;started=false;solo=false;timeAttackMode=false;await supabase.auth.signOut();accountUser=null;cloudGarage=null;signupMode=false;updateAuthUI();showPanel('lobby');};
+supabase.auth.onAuthStateChange((_event,session)=>{const next=session?.user||null;if(next?.id===accountUser?.id)return;accountUser=next;if(!next){stopVehicle();cloudGarage=null;joined=false;started=false;showPanel('lobby');}updateAuthUI();});
 document.querySelectorAll('[data-grade]').forEach(b=>b.onclick=()=>selectGrade(b.dataset.grade));renderVehicleRatings();renderVehicleShop();$('openGarage').onclick=renderGarage;$('closeGarage').onclick=()=>showPanel(joined?'setup':'lobby');
-$('openShop').onclick=()=>{shopCar=carId;renderShop();showPanel('shop');};
+$('openShop').onclick=()=>{if(started)return;shopCar=carId;renderShop();showPanel('shop');};
 $('closeShop').onclick=()=>showPanel(joined?'setup':'lobby');
 document.querySelectorAll('[data-shopcar]').forEach(b=>b.onclick=()=>{shopCar=b.dataset.shopcar;renderShop();});
 document.querySelectorAll('[data-shoptab]').forEach(b=>b.onclick=()=>{shopTab=b.dataset.shoptab;renderShop();});
-function updateDecalPreview(){const e=carInventory(shopCar);e.position={x:Number($('decalX').value),z:Number($('decalZ').value),rotation:Number($('decalRotation').value)};if(shopCar===carId)applyLocalCosmetics();}
+function updateDecalPreview(){if(started)return;const e=carInventory(shopCar);e.position={x:Number($('decalX').value),z:Number($('decalZ').value),rotation:Number($('decalRotation').value)};if(shopCar===carId)applyLocalCosmetics();}
 ['decalX','decalZ','decalRotation'].forEach(id=>$(id).addEventListener('input',updateDecalPreview));
-$('saveDecalPosition').onclick=async()=>{updateDecalPreview();if(accountUser&&wallet.equipped[shopCar].decal){const {error}=await supabase.rpc('equip_cosmetic',{p_vehicle_class:shopCar,p_item_id:wallet.equipped[shopCar].decal,p_placement:wallet.equipped[shopCar].position});if(error)return alert(error.message);}saveWallet();renderShop();};
+$('saveDecalPosition').onclick=async()=>{if(started)return;updateDecalPreview();if(accountUser&&wallet.equipped[shopCar].decal){const {error}=await supabase.rpc('equip_cosmetic',{p_vehicle_class:shopCar,p_item_id:wallet.equipped[shopCar].decal,p_placement:wallet.equipped[shopCar].position});if(error)return alert(error.message);}saveWallet();renderShop();};
 updateWalletUI();
-updateAuthUI();syncAuth().catch(console.error);
-initScene();
+updateAuthUI();
+createVehiclePhysics().then(physics=>{
+ vehiclePhysics=physics;initScene();syncAuth().catch(console.error);
+}).catch(error=>{
+ console.error(error);notify('물리엔진을 불러오지 못했습니다. 앱을 다시 실행해주세요.');
+ ['join','solo','timeAttack','startRace'].forEach(id=>$(id).disabled=true);
+});

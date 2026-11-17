@@ -1,0 +1,5 @@
+TRACK RACING 3D uses @dimforge/rapier3d-compat 0.21.0 (Rapier).
+Rapier is distributed under the Apache License, Version 2.0.
+Source: https://github.com/dimforge/rapier.js
+The full license is bundled at third-party-licenses/Rapier-LICENSE.txt in the web assets.
+The Rapier library itself has not been modified. Game-specific vehicle control code is separate.
