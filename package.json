@@ -8,16 +8,24 @@
     "dev:client": "vite --host 0.0.0.0",
     "dev:server": "node server/index.js",
     "build": "vite build",
-    "start": "node server/index.js"
+    "start": "node server/index.js",
+    "build:desktop": "npm run build && electron-builder --win nsis",
+    "build:android": "npm run build && cap sync android"
   },
   "dependencies": {
     "express": "^4.21.2",
     "three": "^0.171.0",
     "ws": "^8.18.0",
-    "@supabase/supabase-js": "2.95.0"
+    "@supabase/supabase-js": "2.95.0",
+    "@capacitor/core": "^7.0.0",
+    "@capacitor/android": "^7.0.0"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",
-    "vite": "^6.0.7"
-  }
+    "vite": "^6.0.7",
+    "electron": "^34.0.0",
+    "electron-builder": "^25.1.8",
+    "@capacitor/cli": "^7.0.0"
+  },
+  "main": "electron/main.cjs"
 }
