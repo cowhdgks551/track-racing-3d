@@ -6,3 +6,12 @@
 
 .grade-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin:8px 0}.grade-choice{border:1px solid #40515d;border-radius:9px;background:#1a2a35;color:#fff;padding:9px 4px;display:flex;flex-direction:column;gap:3px;cursor:pointer}.grade-choice b{font-size:18px}.grade-choice small{font-size:9px;color:#aebbc2}.grade-choice.active{border-color:#ffd447;background:#3b3420;color:#ffd447}.vehicle-stat-panel{background:#14212b;border:1px solid #344955;border-radius:10px;padding:10px;margin:8px 0 13px}.stat-heading{font-size:10px;font-weight:900;color:#ffd447;margin-bottom:8px}.stat-row{display:grid;grid-template-columns:60px 1fr 25px;gap:7px;align-items:center;margin:6px 0;font-size:10px}.stat-track{height:7px;background:#34434c;border-radius:9px;overflow:hidden}.stat-track i{display:block;height:100%;background:linear-gradient(90deg,#4cc9f0,#ffd447);border-radius:9px}.stat-row b{text-align:right;color:#fff}
 .vehicle-shop{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin:8px 0}.vehicle-shop-item{background:#1a2a35;border:1px solid #40515d;border-radius:9px;padding:9px;display:flex;flex-direction:column;gap:6px}.vehicle-shop-item b{font-size:11px;color:#ffd447}.vehicle-shop-item small{font-size:9px;color:#aebbc2}.vehicle-shop-item button{border:0;border-radius:7px;padding:7px;background:#ffd447;color:#17212a;font-size:10px;font-weight:900}.vehicle-shop-item button:disabled{background:#33424b;color:#9daab1}.time-attack-board{display:grid;gap:5px;margin:8px 0}.leaderboard-head{font-size:10px;color:#ffd447;font-weight:900;padding:6px}.record-row{display:flex;align-items:center;gap:10px;background:#1a2a35;padding:9px;border-radius:8px;font-size:11px}.record-row>b{color:#ffd447;width:18px}.record-row span{flex:1}.record-row small{display:block;color:#aebbc2;font-size:9px}.record-row strong{font-variant-numeric:tabular-nums;color:#fff}
+
+/* Explicit visibility takes precedence over layout display rules. */
+[hidden]{display:none!important}
+#game{touch-action:auto}
+.panel{touch-action:pan-y}
+.panel input,.panel button{touch-action:manipulation}
+#raceControls{touch-action:none}
+#mainMenu{margin-top:12px}
+#signupNickname{grid-column:1/-1}
