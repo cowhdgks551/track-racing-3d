@@ -181,7 +181,7 @@ function setMode(v){mode=v;if(online)send({type:'configure',mode,track:trackId})
 function setTrack(v){trackId=v;activeTrack=v;buildTrack(v);resetCar();if(online)send({type:'configure',mode,track:trackId});}
 function selectCar(v){carId=v;if(online)send({type:'select',car:carId,team});}
 function selectTeam(v){team=v;if(online)send({type:'select',car:carId,team});}
-function startLocal(){started=true;finished=false;elapsed=0;raceStart=performance.now();resetCar();showPanel('');$('message').textContent='GO! 3랩을 완주하세요!';}
+function startLocal(){started=true;finished=false;elapsed=0;raceStart=performance.now();resetCar();$('raceHud').style.display='flex';showPanel('');$('message').textContent='GO! 3랩을 완주하세요!';}
 function update(dt){
  const stats=CLASSES[carId],accel=keys.gas?stats.accel:0,brake=keys.brake?34:0;
  if(started){speed+=accel*dt;speed-=brake*dt;speed*=Math.pow(.989,dt*60);speed=clamp(speed,0,stats.max);
