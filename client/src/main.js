@@ -36,6 +36,14 @@ app.innerHTML=`
    <button data-car="cornering" class="car-choice"><b>03</b><span>코너링형</span><small>조향과 안정성</small></button>
    <button data-car="balance" class="car-choice active"><b>04</b><span>밸런스형</span><small>전체 능력 균형</small></button>
   </div>
+  <div class="field-label">차량 등급</div>
+  <div class="grade-grid" id="gradeGrid">
+   <button data-grade="D" class="grade-choice active"><b>D</b><small>최고 60</small></button>
+   <button data-grade="C" class="grade-choice"><b>C</b><small>최고 65</small></button>
+   <button data-grade="B" class="grade-choice"><b>B</b><small>최고 70</small></button>
+   <button data-grade="A" class="grade-choice"><b>A</b><small>최고 75</small></button>
+  </div>
+  <div class="vehicle-stat-panel" id="vehicleStats"></div>
   <div id="teamSelect" hidden><div class="field-label">팀 선택</div><div class="segmented team-segment"><button data-team="red">🔴 레드팀</button><button data-team="blue">🔵 블루팀</button></div></div>
   <div class="nickname-edit"><label for="nicknameEdit">내 닉네임</label><div><input class="field" id="nicknameEdit" maxlength="14" placeholder="닉네임 입력"/><button class="btn" id="saveNickname">변경</button></div></div>
   <div class="room-roster"><div><b>참가자</b><span id="rosterCount">1 / 10</span></div><div id="roster"></div></div>
@@ -145,7 +153,7 @@ async function loadCloudAccount(){
  ]);
  for(const q of [profile,walletRow,vehicles,inventory,tx,races])if(q.error)throw q.error;
  cloudGarage={profile:profile.data,wallet:walletRow.data,vehicles:vehicles.data||[],inventory:inventory.data||[],transactions:tx.data||[],races:races.data||[]};
- const selectedVehicle=cloudGarage.vehicles.find(v=>v.is_selected);if(selectedVehicle)carId=selectedVehicle.vehicle_class;
+ const selectedVehicle=cloudGarage.vehicles.find(v=>v.is_selected);if(selectedVehicle){carId=selectedVehicle.vehicle_class;vehicleGrade=selectedVehicle.vehicle_grade||'D';}
  wallet.coins=walletRow.data?.coins||0;
  for(const type of ['acceleration','topSpeed','cornering','balance']){
   const rows=cloudGarage.inventory.filter(v=>v.vehicle_class===type);
@@ -304,11 +312,23 @@ function showResults(m){
 }
 function setMode(v){mode=v;if(online)send({type:'configure',mode,track:trackId});}
 function setTrack(v){trackId=v;activeTrack=v;buildTrack(v);resetCar();if(online)send({type:'configure',mode,track:trackId});}
-async function selectCar(v){carId=v;applyLocalCosmetics();if(accountUser){const {error}=await supabase.rpc('select_vehicle',{p_vehicle_class:v});if(error)console.error(error);}if(online)send({type:'select',car:carId,team});}
+async function selectCar(v){carId=v;renderVehicleRatings();applyLocalCosmetics();if(accountUser){const {error}=await supabase.rpc('select_vehicle',{p_vehicle_class:v,p_grade:vehicleGrade});if(error)console.error(error);}if(online)send({type:'select',car:carId,grade:vehicleGrade,team});}
+function renderVehicleRatings(){
+ const stats=vehicleRatings();
+ const labels=[['acceleration','가속'],['topSpeed','최고속도'],['cornering','코너링']];
+ const el=$('vehicleStats');if(!el)return;
+ el.innerHTML='<div class="stat-heading">'+CLASS_RATIOS[carId].label+' · '+vehicleGrade+'등급</div>'+labels.map(([key,label])=>'<div class="stat-row"><span>'+label+'</span><div class="stat-track"><i style="width:'+stats[key]+'%"></i></div><b>'+stats[key]+'</b></div>').join('');
+ document.querySelectorAll('[data-grade]').forEach(b=>b.classList.toggle('active',b.dataset.grade===vehicleGrade));
+}
+async function selectGrade(grade){
+ if(!GRADE_PEAK[grade])return;vehicleGrade=grade;renderVehicleRatings();
+ if(accountUser){const {error}=await supabase.rpc('select_vehicle',{p_vehicle_class:carId,p_grade:grade});if(error){alert(error.message);return;}}
+ if(online)send({type:'select',car:carId,grade,team});
+}
 function selectTeam(v){team=v;if(online)send({type:'select',car:carId,team});}
 function startLocal(){started=true;finished=false;elapsed=0;raceStart=performance.now();resetCar();$('raceHud').style.display='flex';showPanel('');$('message').textContent='GO! 3랩을 완주하세요!';}
 function update(dt){
- const stats=CLASSES[carId],accel=keys.gas?stats.accel:0,brake=keys.brake?34:0;
+ const stats=getVehicleStats(carId,vehicleGrade),accel=keys.gas?stats.accel:0,brake=keys.brake?34:0;
  if(started){speed+=accel*dt;speed-=brake*dt;speed*=Math.pow(.989,dt*60);speed=clamp(speed,0,stats.max);
   const steer=(keys.left?1:0)-(keys.right?1:0);heading+=steer*dt*stats.turn*(.25+speed/stats.max)*Math.sign(speed||1);
   x+=Math.sin(heading)*speed*dt;z+=Math.cos(heading)*speed*dt;
@@ -357,7 +377,7 @@ $('startRace').onclick=()=>{if(solo){startLocal();return;}if(myId===hostId)send(
 $('again').onclick=()=>{showPanel('setup');if(solo){resetCar();$('startRace').disabled=false;}else send({type:'restart'});};
 $('signIn').onclick=signIn;$('signUp').onclick=signUp;$('signOut').onclick=async()=>{await supabase.auth.signOut();accountUser=null;updateAuthUI();showPanel('lobby');};
 supabase.auth.onAuthStateChange(async (_event,session)=>{accountUser=session?.user||null;updateAuthUI();if(accountUser){try{await loadCloudAccount();}catch(e){console.error(e);}}});
-$('openGarage').onclick=renderGarage;$('closeGarage').onclick=()=>showPanel(joined?'setup':'lobby');
+document.querySelectorAll('[data-grade]').forEach(b=>b.onclick=()=>selectGrade(b.dataset.grade));renderVehicleRatings();$('openGarage').onclick=renderGarage;$('closeGarage').onclick=()=>showPanel(joined?'setup':'lobby');
 $('openShop').onclick=()=>{shopCar=carId;renderShop();showPanel('shop');};
 $('closeShop').onclick=()=>showPanel(joined?'setup':'lobby');
 document.querySelectorAll('[data-shopcar]').forEach(b=>b.onclick=()=>{shopCar=b.dataset.shopcar;renderShop();});
