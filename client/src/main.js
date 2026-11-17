@@ -109,6 +109,7 @@ let scene,camera,renderer,curve,localCar,ground,trackGroup;
 let ws=null,myId=null,roomCode='',online=false,joined=false,hostId=null;
 let mode='individual',trackId='yeongam',carId='balance',team=null,players=[];
 let started=false,finished=false,lap=0,progress=0,lastProgress=0,speed=0,heading=0,x=0,z=0;
+let lateralVelocity=0,yawVelocity=0,steeringAngle=0;const wheelBase=2.65;
 let raceStart=0,elapsed=0,sendClock=0,solo=false;
 const keys={left:false,right:false,gas:false,brake:false};
 const remotes=new Map(),clock=new THREE.Clock();
@@ -179,6 +180,7 @@ async function loadCloudAccount(){
  updateWalletUI();
  if(profile.data?.nickname)$('nickname').value=profile.data.nickname;else if(accountUser.user_metadata?.nickname)$('nickname').value=accountUser.user_metadata.nickname;
  if(localCar)applyLocalCosmetics();
+ refreshSelections();
 }
 async function renderGarage(){
  if(!accountUser){alert('차고를 이용하려면 먼저 로그인해주세요.');showPanel('lobby');return;}
@@ -285,6 +287,7 @@ function buildTrack(id){
 function sideSign(i){return i%2?1:-1;}
 function nearest(px,pz){let best=0,dist=Infinity;for(let i=0;i<400;i++){const p=curve.getPointAt(i/400),d=(p.x-px)**2+(p.z-pz)**2;if(d<dist){dist=d;best=i/400;}}return {progress:best,dist:Math.sqrt(dist),point:curve.getPointAt(best)};}
 function resetCar(){
+ lateralVelocity=0;yawVelocity=0;steeringAngle=0;
  const p=curve.getPointAt(.005),t=curve.getTangentAt(.005);x=p.x;z=p.z;heading=Math.atan2(t.x,t.z);speed=0;lap=0;progress=.005;lastProgress=.005;finished=false;localCar.position.set(x,0,z);localCar.rotation.y=heading;
  $('lap').textContent='0 / 3';$('time').textContent='00:00.0';$('position').textContent='-';
 }
@@ -317,7 +320,7 @@ function applyRoom(m){
  document.querySelectorAll('[data-mode]').forEach(b=>b.classList.toggle('active',b.dataset.mode===mode));
  document.querySelectorAll('[data-track]').forEach(b=>b.classList.toggle('active',b.dataset.track===trackId));
  document.querySelectorAll('[data-car]').forEach(b=>b.classList.toggle('active',b.dataset.car===carId));
- document.querySelectorAll('[data-team]').forEach(b=>b.classList.toggle('active',b.dataset.team===team));
+ refreshSelections();
  $('teamSelect').hidden=mode!=='team';
  showPanel(m.started?'':'setup');
  updateRemoteData(players);
@@ -362,10 +365,17 @@ function showResults(m){
  $('resultRows').innerHTML=m.results.map(r=>`<div class="result-row ${r.finished?'':'dnf'}"><b>${r.rank||'DNF'}</b><span>${r.team==='red'?'🔴':r.team==='blue'?'🔵':'🏁'} ${escapeHtml(r.name)}</span><strong>${r.points}점 · +${r.coins||0}🪙</strong></div>`).join('');
  $('again').textContent=myId===hostId?'로비로 돌아가기':'결과 확인 완료';
 }
-function setMode(v){mode=v;if(online)send({type:'configure',mode,track:trackId});}
-function setTrack(v){trackId=v;activeTrack=v;buildTrack(v);resetCar();if(online)send({type:'configure',mode,track:trackId});}
+function refreshSelections(){
+ document.querySelectorAll('[data-mode]').forEach(b=>b.classList.toggle('active',b.dataset.mode===mode));
+ document.querySelectorAll('[data-track]').forEach(b=>b.classList.toggle('active',b.dataset.track===trackId));
+ document.querySelectorAll('[data-car]').forEach(b=>b.classList.toggle('active',b.dataset.car===carId));
+ document.querySelectorAll('[data-team]').forEach(b=>b.classList.toggle('active',b.dataset.team===team));
+ document.querySelectorAll('[data-grade]').forEach(b=>b.classList.toggle('active',b.dataset.grade===vehicleGrade));
+}
+function setMode(v){mode=v;refreshSelections();if(online)send({type:'configure',mode,track:trackId});}
+function setTrack(v){trackId=v;activeTrack=v;buildTrack(v);resetCar();refreshSelections();if(online)send({type:'configure',mode,track:trackId});}
 async function selectCar(v){
- carId=v;
+ carId=v;refreshSelections();
  if(accountUser&&!cloudGarage?.vehicles?.some(row=>row.vehicle_class===v&&row.vehicle_grade===vehicleGrade))vehicleGrade='D';
  renderVehicleRatings();
  if(localCar){const pos=localCar.position.clone(),rot=localCar.rotation.y;scene.remove(localCar);localCar=makeCar(0xffd447,v);localCar.position.copy(pos);localCar.rotation.y=rot;scene.add(localCar);}
@@ -383,11 +393,11 @@ function renderVehicleRatings(){
 async function selectGrade(grade){
  if(!GRADE_PEAK[grade])return;
  if(accountUser&&!cloudGarage?.vehicles?.some(v=>v.vehicle_class===carId&&v.vehicle_grade===grade)){alert('먼저 상점에서 해당 등급 차량을 구매해주세요.');return;}
- vehicleGrade=grade;renderVehicleRatings();
+ vehicleGrade=grade;renderVehicleRatings();refreshSelections();
  if(accountUser){const {error}=await supabase.rpc('select_vehicle',{p_vehicle_class:carId,p_grade:grade});if(error){alert(error.message);return;}}
  if(online)send({type:'select',car:carId,grade,team});
 }
-function selectTeam(v){team=v;if(online)send({type:'select',car:carId,team});}
+function selectTeam(v){team=v;refreshSelections();if(online)send({type:'select',car:carId,team});}
 
 function renderVehicleShop(){
  const names={acceleration:'가속형',topSpeed:'최고속도형',cornering:'코너링형',balance:'밸런스형'};
@@ -420,11 +430,25 @@ async function saveTimeAttackRecord(){
 function startLocal(){started=true;finished=false;elapsed=0;raceStart=performance.now();resetCar();showPanel('');$('message').textContent='GO! 3랩을 완주하세요!';}
 function update(dt){
  const stats=getVehicleStats(carId,vehicleGrade),accel=keys.gas?stats.accel:0,brake=keys.brake?34:0;
- if(started){speed+=accel*dt;speed-=brake*dt;speed*=Math.pow(.989,dt*60);speed=clamp(speed,0,stats.max);
-  const steer=(keys.left?1:0)-(keys.right?1:0);heading+=steer*dt*stats.turn*(.25+speed/stats.max)*Math.sign(speed||1);
-  x+=Math.sin(heading)*speed*dt;z+=Math.cos(heading)*speed*dt;
-  const near=nearest(x,z);if(near.dist>5.9)speed*=Math.pow(stats.grip<1?.86:.92,dt*60);
-  if(near.dist>13){x=near.point.x;z=near.point.z;speed*=.35;}
+ if(started){
+  // Bicycle-model steering with speed-sensitive steering, yaw inertia and lateral tyre grip.
+  const steerInput=(keys.left?1:0)-(keys.right?1:0);
+  const targetSteer=steerInput*(.47/(1+speed*.014));
+  steeringAngle+= (targetSteer-steeringAngle)*Math.min(1,dt*8);
+  const engineForce=keys.gas?stats.accel:0;
+  const brakingForce=keys.brake?Math.min(40,speed/dt):0;
+  const drag=.014*speed+.0035*speed*speed;
+  speed=clamp(speed+(engineForce-brakingForce-drag)*dt,0,stats.max);
+  const desiredYaw=speed*Math.tan(steeringAngle)/wheelBase;
+  const grip=clamp(stats.grip,.65,1.3);
+  yawVelocity+=(desiredYaw-yawVelocity)*Math.min(1,dt*(2.6+grip*3.4));
+  const slipTarget=clamp((desiredYaw-yawVelocity)*speed*.12,-speed*.26,speed*.26);
+  lateralVelocity+=(slipTarget-lateralVelocity)*Math.min(1,dt*(3.5+grip*4));
+  heading+=yawVelocity*dt;
+  x+=(Math.sin(heading)*speed+Math.cos(heading)*lateralVelocity)*dt;
+  z+=(Math.cos(heading)*speed-Math.sin(heading)*lateralVelocity)*dt;
+  const near=nearest(x,z);if(near.dist>5.5){speed*=Math.pow(.976,dt*60);lateralVelocity*=Math.pow(.88,dt*60);}
+  if(near.dist>13){x=near.point.x;z=near.point.z;speed*=.25;lateralVelocity=0;yawVelocity=0;}
   const p=near.progress;
   if(lastProgress>.88&&p<.12&&speed>2.5){lap++;$('lap').textContent=`${lap} / 3`;lastProgress=p;if(lap>=3)finishRace();}
   else if(p>lastProgress-.12)lastProgress=p;
@@ -439,8 +463,11 @@ function update(dt){
 }
 function formatTime(ms){const s=ms/1000;return String(Math.floor(s/60)).padStart(2,'0')+':'+String(Math.floor(s%60)).padStart(2,'0')+'.'+Math.floor(s%1*10);}
 function animate(){requestAnimationFrame(animate);const dt=Math.min(clock.getDelta(),.04);if(joined)update(dt);
- const target=new THREE.Vector3(x,0,z),behind=new THREE.Vector3(-Math.sin(heading)*13,8,-Math.cos(heading)*13);
- camera.position.lerp(target.clone().add(behind),.09);camera.lookAt(target.clone().add(new THREE.Vector3(0,1,0)));renderer.render(scene,camera);}
+ const target=new THREE.Vector3(x,0,z),racing=started;
+ const followDistance=racing?8.6:13,followHeight=racing?3.7:7.5;
+ const behind=new THREE.Vector3(-Math.sin(heading)*followDistance,followHeight,-Math.cos(heading)*followDistance);
+ camera.position.lerp(target.clone().add(behind),1-Math.exp(-dt*(racing?6:3.5)));
+ camera.lookAt(target.clone().add(new THREE.Vector3(0,racing?1.15:1,0)));renderer.render(scene,camera);}
 function hold(id,key){const el=$(id),down=e=>{e.preventDefault();keys[key]=true;},up=e=>{e.preventDefault();keys[key]=false;};el.addEventListener('pointerdown',down);['pointerup','pointerleave','pointercancel'].forEach(ev=>el.addEventListener(ev,up));}
 hold('left','left');hold('right','right');hold('gas','gas');hold('brake','brake');
 addEventListener('keydown',e=>{if(e.target?.closest?.('input,textarea,select,[contenteditable]')||!started||!accountUser)return;if(['ArrowLeft','a','A'].includes(e.key))keys.left=true;if(['ArrowRight','d','D'].includes(e.key))keys.right=true;if(['ArrowUp','w','W'].includes(e.key))keys.gas=true;if(['ArrowDown','s','S'].includes(e.key))keys.brake=true;});
