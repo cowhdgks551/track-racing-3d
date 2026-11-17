@@ -6,11 +6,17 @@ app.innerHTML=`
 <div id="game"><div class="hud">
  <header class="topbar"><div class="brand">TRACK <span>RACING</span> 3D</div><div class="pill" id="connection">● OFFLINE</div></header>
  <div class="race-hud" id="raceHud"><div class="stat"><small>LAP</small><b id="lap">0 / 3</b></div><div class="stat"><small>TIME</small><b id="time">00:00.0</b></div><div class="stat"><small>SPEED</small><b id="speed">0</b><small>KM/H</small></div><div class="stat"><small>POSITION</small><b id="position">-</b></div></div>
- <div class="wallet" id="wallet">🪙 <b id="coinBalance">0</b></div><button class="shop-open" id="openShop">상점</button><div class="roominfo" id="roominfo"></div><div class="leader" id="leader" hidden><strong>RACE ORDER</strong><div id="leaderlist"></div></div>
+ <div class="wallet" id="wallet">🪙 <b id="coinBalance">0</b></div><button class="garage-open" id="openGarage">차고</button><button class="shop-open" id="openShop">상점</button><div class="roominfo" id="roominfo"></div><div class="leader" id="leader" hidden><strong>RACE ORDER</strong><div id="leaderlist"></div></div>
  <div class="controls"><div class="steer"><button class="control" id="left">◀</button><button class="control" id="right">▶</button></div><div class="pedals"><button class="control" id="brake">BRAKE</button><button class="control go" id="gas">GAS</button></div></div>
  <div id="message">WASD / 방향키로 조작 · 모바일은 화면 버튼</div>
  <section class="panel" id="lobby">
   <div class="eyebrow">ONLINE CIRCUIT RACING</div><h1>TRACK <span>RACING</span> 3D</h1><p class="sub">국내 서킷에서 펼쳐지는 온라인 레이싱</p>
+  <div class="account-box" id="accountBox">
+   <div class="account-title">PLAYER ACCOUNT <span id="authStatus">게스트 플레이</span></div>
+   <div class="account-fields"><input class="field" id="accountEmail" type="email" autocomplete="email" placeholder="이메일"/><input class="field" id="accountPassword" type="password" autocomplete="current-password" placeholder="비밀번호"/></div>
+   <div class="account-actions"><button class="btn" id="signIn">로그인</button><button class="btn secondary" id="signUp">회원가입</button><button class="btn secondary" id="signOut" hidden>로그아웃</button></div>
+   <p class="hint" id="accountMessage">로그인하면 코인과 차고가 계정에 안전하게 저장됩니다.</p>
+  </div>
   <div class="setup-grid"><label>닉네임<input class="field" id="nickname" maxlength="14" value="Racer"/></label><label>방 코드<input class="field" id="room" maxlength="8" value="SPEED"/></label></div>
   <button class="btn" id="join">온라인 방 만들기 / 입장</button><button class="btn secondary" id="solo">혼자 연습하기</button>
   <p class="hint">온라인 최대 10명 · 3랩 · 팀전은 5대5</p>
@@ -39,6 +45,14 @@ app.innerHTML=`
  <section class="panel result-panel" id="results" hidden>
   <div class="eyebrow">RACE COMPLETE</div><h2>레이스 결과</h2><div id="teamScore"></div><div id="resultRows"></div>
   <button class="btn" id="again">로비로 돌아가기</button>
+ </section>
+ <section class="panel garage-panel" id="garage" hidden>
+  <div class="shop-head"><div><div class="eyebrow">MY COLLECTION</div><h2>나의 차고</h2></div><button class="close-shop" id="closeGarage">✕</button></div>
+  <div class="shop-balance">보유 코인 <b id="garageCoins">0</b> 🪙</div>
+  <div class="field-label">내 차량</div><div id="garageVehicles" class="garage-vehicles"></div>
+  <div class="field-label">보유 페인트 & 문양</div><div id="garageInventory" class="garage-inventory"></div>
+  <div class="field-label">최근 구매 및 레이스 이력</div><div id="garageHistory" class="garage-history"></div>
+  <p class="hint">계정에 저장된 차량, 아이템, 구매 내역은 다른 기기에서 로그인해도 유지됩니다.</p>
  </section>
  <section class="panel shop-panel" id="shop" hidden>
   <div class="shop-head"><div><div class="eyebrow">GARAGE & SHOP</div><h2>레이싱 상점</h2></div><button class="close-shop" id="closeShop">✕</button></div>
@@ -81,6 +95,8 @@ const pointsAward=[10,9,8,7,6,5,4,3,2,1];
 const PAINTS=[{id:'red',name:'레이싱 레드',color:'#ef4444'},{id:'blue',name:'일렉트릭 블루',color:'#2684ff'},{id:'green',name:'네온 그린',color:'#55d66b'},{id:'purple',name:'퍼플 메탈',color:'#9b59d0'},{id:'white',name:'펄 화이트',color:'#f2f3f4'},{id:'black',name:'미드나잇 블랙',color:'#222831'},{id:'orange',name:'레이싱 오렌지',color:'#ff8a24'},{id:'pink',name:'핫 핑크',color:'#f052a5'}];
 const DECALS=[{id:'bolt',name:'번개',glyph:'ϟ'},{id:'star',name:'스타',glyph:'★'},{id:'number',name:'레이싱 넘버',glyph:'03'},{id:'stripe',name:'스트라이프',glyph:'〓'},{id:'flame',name:'파이어',glyph:'♨'},{id:'wing',name:'윙',glyph:'翼'}];
 const walletKey='trackRacing3D_wallet_v1';
+import { supabase } from './supabase.js';
+let accountUser=null,cloudGarage=null,authReady=false;
 let wallet=loadWallet(),shopCar='balance',shopTab='paint',selectedDecal=null;
 function loadWallet(){try{return JSON.parse(localStorage.getItem(walletKey))||{coins:0,ownedPaint:{},ownedDecal:{},equipped:{}};}catch{return {coins:0,ownedPaint:{},ownedDecal:{},equipped:{}};}}
 function saveWallet(){localStorage.setItem(walletKey,JSON.stringify(wallet));updateWalletUI();}
@@ -89,9 +105,22 @@ function carInventory(type){wallet.ownedPaint[type]??=['default'];wallet.ownedDe
 function currentPaint(type){const id=carInventory(type).paint;return id==='default'?'#ffd447':PAINTS.find(p=>p.id===id)?.color||'#ffd447';}
 function cosmeticsFor(type){const e=carInventory(type);return {paint:currentPaint(type),decal:e.decal,position:e.position};}
 function grantCoins(amount){if(!Number.isFinite(amount)||amount<=0)return;wallet.coins+=amount;saveWallet();}
-function buyItem(kind,id){const cost=kind==='paint'?30:20,owned=kind==='paint'?wallet.ownedPaint[shopCar]:wallet.ownedDecal[shopCar];if(owned.includes(id)){if(kind==='paint')wallet.equipped[shopCar].paint=id;else{wallet.equipped[shopCar].decal=id;selectedDecal=id;}saveWallet();applyLocalCosmetics();renderShop();return;}
+async function buyItem(kind,id){
+ const owned=kind==='paint'?wallet.ownedPaint[shopCar]:wallet.ownedDecal[shopCar];
+ if(owned.includes(id)){
+  if(kind==='paint')wallet.equipped[shopCar].paint=id;else{wallet.equipped[shopCar].decal=id;selectedDecal=id;}
+  if(accountUser){const placement=wallet.equipped[shopCar].position;await supabase.rpc('equip_cosmetic',{p_vehicle_class:shopCar,p_item_id:id,p_placement:placement});}
+  saveWallet();applyLocalCosmetics();renderShop();return;
+ }
+ if(accountUser){
+  const {error}=await supabase.rpc('purchase_cosmetic',{p_vehicle_class:shopCar,p_item_id:id});
+  if(error){alert(error.message);return;}
+  await loadCloudAccount();applyLocalCosmetics();renderShop();return;
+ }
+ const cost=kind==='paint'?30:20;
  if(wallet.coins<cost){alert('코인이 부족합니다. 레이스에 참가해 코인을 모아주세요.');return;}
- wallet.coins-=cost;owned.push(id);if(kind==='paint')wallet.equipped[shopCar].paint=id;else{wallet.equipped[shopCar].decal=id;selectedDecal=id;}saveWallet();applyLocalCosmetics();renderShop();}
+ wallet.coins-=cost;owned.push(id);if(kind==='paint')wallet.equipped[shopCar].paint=id;else{wallet.equipped[shopCar].decal=id;selectedDecal=id;}saveWallet();applyLocalCosmetics();renderShop();
+}
 function renderShop(){updateWalletUI();document.querySelectorAll('[data-shopcar]').forEach(b=>b.classList.toggle('active',b.dataset.shopcar===shopCar));document.querySelectorAll('[data-shoptab]').forEach(b=>b.classList.toggle('active',b.dataset.shoptab===shopTab));const inv=carInventory(shopCar),items=shopTab==='paint'?PAINTS:DECALS,owned=shopTab==='paint'?wallet.ownedPaint[shopCar]:wallet.ownedDecal[shopCar],equipped=shopTab==='paint'?inv.paint:inv.decal;
  $('shopItems').innerHTML=items.map(item=>{const isOwned=owned.includes(item.id),active=equipped===item.id;return '<button class="shop-item '+(active?'equipped':'')+'" data-buy="'+item.id+'"><span class="swatch" style="'+(shopTab==='paint'?'background:'+item.color:'')+'">'+(shopTab==='decal'?item.glyph:'')+'</span><span><b>'+item.name+'</b><small>'+(isOwned?(active?'장착 중':'보유 · 장착 가능'):(shopTab==='paint'?30:20)+' 코인')+'</small></span><strong>'+(active?'✓':isOwned?'장착':'구매')+'</strong></button>';}).join('');
  $('shopItems').querySelectorAll('[data-buy]').forEach(b=>b.onclick=()=>buyItem(shopTab,b.dataset.buy));
@@ -101,13 +130,57 @@ function renderShop(){updateWalletUI();document.querySelectorAll('[data-shopcar]
 function makeDecalTexture(id){const item=DECALS.find(d=>d.id===id);const c=document.createElement('canvas');c.width=256;c.height=256;const ctx=c.getContext('2d');ctx.clearRect(0,0,256,256);ctx.fillStyle='#ffffff';ctx.strokeStyle='#ffffff';ctx.textAlign='center';ctx.textBaseline='middle';ctx.font='bold 190px Arial';ctx.shadowColor='#111827';ctx.shadowBlur=5;ctx.fillText(item?.glyph||'★',128,132);const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;return t;}
 function applyCarCosmetics(car,type){if(!car)return;const paint=car.userData.bodyMaterial;if(paint)paint.color.set(currentPaint(type));if(car.userData.decal){car.remove(car.userData.decal);car.userData.decal.material.map?.dispose();}const e=carInventory(type);if(e.decal){const mat=new THREE.MeshBasicMaterial({map:makeDecalTexture(e.decal),transparent:true,depthWrite:false,side:THREE.DoubleSide});const mesh=new THREE.Mesh(new THREE.PlaneGeometry(.85,.85),mat);mesh.rotation.x=-Math.PI/2;mesh.rotation.z=(e.position.rotation||0)*Math.PI/180;mesh.position.set(e.position.x,.999,e.position.z);car.add(mesh);car.userData.decal=mesh;} }
 function applyLocalCosmetics(){applyCarCosmetics(localCar,carId);send({type:'cosmetics',cosmetics:cosmeticsFor(carId)});}
-function awardRaceCoins(m){const result=m.results?.find(r=>r.id===myId);if(!result||m.raceId===lastAwardedRace)return;lastAwardedRace=m.raceId||('local-'+Date.now());grantCoins(result.coins||0);$('message').textContent='레이스 보상 +' +(result.coins||0)+' 코인';}
+async function awardRaceCoins(m){const result=m.results?.find(r=>r.id===myId);if(!result||m.raceId===lastAwardedRace)return;lastAwardedRace=m.raceId||('local-'+Date.now());if(accountUser&&m.raceId){const teamResult=m.teams?.winner==='draw'?'draw':result.team===m.teams?.winner?'win':'loss';const {data,error}=await supabase.rpc('claim_race_reward',{p_race_id:m.raceId,p_mode:m.mode,p_track_id:trackId,p_vehicle_class:carId,p_finish_rank:result.rank||null,p_finished:!!result.finished,p_team_id:result.team||null,p_team_result:teamResult});if(error){$('message').textContent='보상 저장 실패: '+error.message;return;}wallet.coins=data.balance??wallet.coins;await loadCloudAccount();}else grantCoins(result.coins||0);$('message').textContent='레이스 보상 +' +(result.coins||0)+' 코인';}
 let lastAwardedRace=null;
+async function loadCloudAccount(){
+ if(!accountUser)return;
+ const uid=accountUser.id;
+ const [profile,walletRow,vehicles,inventory,tx,races]=await Promise.all([
+  supabase.from('player_profiles').select('*').eq('user_id',uid).maybeSingle(),
+  supabase.from('player_wallets').select('*').eq('user_id',uid).maybeSingle(),
+  supabase.from('player_vehicles').select('*').eq('user_id',uid),
+  supabase.from('player_inventory').select('*, cosmetic_catalog(*)').eq('user_id',uid),
+  supabase.from('wallet_transactions').select('*').eq('user_id',uid).order('created_at',{ascending:false}).limit(8),
+  supabase.from('player_race_history').select('*').eq('user_id',uid).order('played_at',{ascending:false}).limit(8)
+ ]);
+ for(const q of [profile,walletRow,vehicles,inventory,tx,races])if(q.error)throw q.error;
+ cloudGarage={profile:profile.data,wallet:walletRow.data,vehicles:vehicles.data||[],inventory:inventory.data||[],transactions:tx.data||[],races:races.data||[]};
+ wallet.coins=walletRow.data?.coins||0;
+ for(const type of ['acceleration','topSpeed','cornering','balance']){
+  const rows=cloudGarage.inventory.filter(v=>v.vehicle_class===type);
+  wallet.ownedPaint[type]=['default',...rows.filter(v=>v.cosmetic_catalog?.item_type==='paint').map(v=>v.item_id)];
+  wallet.ownedDecal[type]=rows.filter(v=>v.cosmetic_catalog?.item_type==='decal').map(v=>v.item_id);
+  const paint=rows.find(v=>v.cosmetic_catalog?.item_type==='paint'&&v.is_equipped);
+  const decal=rows.find(v=>v.cosmetic_catalog?.item_type==='decal'&&v.is_equipped);
+  wallet.equipped[type]={paint:paint?.item_id||'default',decal:decal?.item_id||null,position:decal?.placement||{x:0,z:0,rotation:0}};
+ }
+ updateWalletUI();if($('garage').hidden===false)renderGarage();
+ if(profile.data?.nickname)$('nickname').value=profile.data.nickname;
+ if(localCar)applyLocalCosmetics();
+}
+async function renderGarage(){
+ if(!accountUser){alert('차고를 이용하려면 먼저 로그인해주세요.');showPanel('lobby');return;}
+ try{await loadCloudAccount();}catch(e){alert('차고 정보를 불러오지 못했습니다: '+e.message);return;}
+ $('garageCoins').textContent=wallet.coins;
+ $('garageVehicles').innerHTML=cloudGarage.vehicles.map(v=>'<div class="garage-car"><b>'+({acceleration:'가속형',topSpeed:'최고속도형',cornering:'코너링형',balance:'밸런스형'}[v.vehicle_class]||v.vehicle_class)+'</b><span>'+(v.is_selected?'선택된 차량':'보유 차량')+'</span><button data-garage-car="'+v.vehicle_class+'">차량 선택</button></div>').join('');
+ $('garageVehicles').querySelectorAll('[data-garage-car]').forEach(b=>b.onclick=()=>{selectCar(b.dataset.garageCar);showPanel('setup');});
+ $('garageInventory').innerHTML=cloudGarage.inventory.length?cloudGarage.inventory.map(v=>'<div class="garage-item"><span>'+(v.cosmetic_catalog?.item_type==='paint'?'🎨':'✦')+'</span><b>'+escapeHtml(v.cosmetic_catalog?.display_name||v.item_id)+'</b><small>'+({acceleration:'가속형',topSpeed:'최고속도형',cornering:'코너링형',balance:'밸런스형'}[v.vehicle_class])+'</small><em>'+(v.is_equipped?'장착 중':'보유')+'</em></div>').join(''):'<p class="hint">아직 구매한 페인트나 문양이 없습니다.</p>';
+ const history=[...cloudGarage.transactions.map(t=>({date:t.created_at,label:t.description,amount:t.amount})),...cloudGarage.races.map(r=>({date:r.played_at,label:'레이스 · '+r.track_id+' · '+(r.finish_rank||'DNF')+'위',amount:r.coins_earned}))].sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,8);
+ $('garageHistory').innerHTML=history.length?history.map(h=>'<div class="history-row"><span>'+escapeHtml(h.label)+'</span><b class="'+(h.amount<0?'negative':'positive')+'">'+(h.amount>0?'+':'')+h.amount+' 🪙</b></div>').join(''):'<p class="hint">아직 기록이 없습니다.</p>';
+ showPanel('garage');
+}
+async function syncAuth(){
+ const {data:{session}}=await supabase.auth.getSession();accountUser=session?.user||null;updateAuthUI();if(accountUser)await loadCloudAccount();
+}
+function updateAuthUI(){ $('authStatus').textContent=accountUser?accountUser.email:'게스트 플레이';$('signIn').hidden=!!accountUser;$('signUp').hidden=!!accountUser;$('signOut').hidden=!accountUser;$('accountEmail').hidden=!!accountUser;$('accountPassword').hidden=!!accountUser;$('accountMessage').textContent=accountUser?'계정 연결됨 · 코인과 차고가 클라우드에 저장됩니다.':'로그인하면 코인과 차고가 계정에 안전하게 저장됩니다.'; }
+async function signIn(){const email=$('accountEmail').value.trim(),password=$('accountPassword').value;if(!email||!password)return alert('이메일과 비밀번호를 입력해주세요.');const {data,error}=await supabase.auth.signInWithPassword({email,password});if(error)return alert(error.message);accountUser=data.user;await loadCloudAccount();updateAuthUI();}
+async function signUp(){const email=$('accountEmail').value.trim(),password=$('accountPassword').value,nickname=$('nickname').value.trim()||'Racer';if(!email||password.length<8)return alert('이메일과 8자 이상의 비밀번호를 입력해주세요.');const {data,error}=await supabase.auth.signUp({email,password,options:{data:{nickname}}});if(error)return alert(error.message);if(data.session){accountUser=data.user;await loadCloudAccount();updateAuthUI();}else alert('가입 요청이 완료됐어요. 이메일 인증 후 로그인해주세요.');}
+
 
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const setStatus=t=>$('connection').textContent=t;
 function send(o){if(ws&&ws.readyState===1)ws.send(JSON.stringify(o));}
-function showPanel(id){['lobby','setup','results','shop'].forEach(k=>$(k).hidden=k!==id);}
+function showPanel(id){['lobby','setup','results','shop','garage'].forEach(k=>$(k).hidden=k!==id);}
 function makeCar(color){
  const g=new THREE.Group(),paint=new THREE.MeshStandardMaterial({color,roughness:.35,metalness:.12}),dark=new THREE.MeshStandardMaterial({color:0x17212a,roughness:.7});
  const body=new THREE.Mesh(new THREE.BoxGeometry(2.1,.58,3.8),paint);body.position.y=.7;body.castShadow=true;g.add(body);g.userData.bodyMaterial=paint;
@@ -280,12 +353,16 @@ document.querySelectorAll('[data-car]').forEach(b=>b.onclick=()=>selectCar(b.dat
 document.querySelectorAll('[data-team]').forEach(b=>b.onclick=()=>selectTeam(b.dataset.team));
 $('startRace').onclick=()=>{if(solo){startLocal();return;}if(myId===hostId)send({type:'start'});};
 $('again').onclick=()=>{showPanel('setup');if(solo){resetCar();$('startRace').disabled=false;}else send({type:'restart'});};
+$('signIn').onclick=signIn;$('signUp').onclick=signUp;$('signOut').onclick=async()=>{await supabase.auth.signOut();accountUser=null;updateAuthUI();showPanel('lobby');};
+supabase.auth.onAuthStateChange(async (_event,session)=>{accountUser=session?.user||null;updateAuthUI();if(accountUser){try{await loadCloudAccount();}catch(e){console.error(e);}}});
+$('openGarage').onclick=renderGarage;$('closeGarage').onclick=()=>showPanel(joined?'setup':'lobby');
 $('openShop').onclick=()=>{shopCar=carId;renderShop();showPanel('shop');};
 $('closeShop').onclick=()=>showPanel(joined?'setup':'lobby');
 document.querySelectorAll('[data-shopcar]').forEach(b=>b.onclick=()=>{shopCar=b.dataset.shopcar;renderShop();});
 document.querySelectorAll('[data-shoptab]').forEach(b=>b.onclick=()=>{shopTab=b.dataset.shoptab;renderShop();});
 function updateDecalPreview(){const e=carInventory(shopCar);e.position={x:Number($('decalX').value),z:Number($('decalZ').value),rotation:Number($('decalRotation').value)};if(shopCar===carId)applyLocalCosmetics();}
 ['decalX','decalZ','decalRotation'].forEach(id=>$(id).addEventListener('input',updateDecalPreview));
-$('saveDecalPosition').onclick=()=>{updateDecalPreview();saveWallet();renderShop();};
+$('saveDecalPosition').onclick=async()=>{updateDecalPreview();if(accountUser&&wallet.equipped[shopCar].decal){const {error}=await supabase.rpc('equip_cosmetic',{p_vehicle_class:shopCar,p_item_id:wallet.equipped[shopCar].decal,p_placement:wallet.equipped[shopCar].position});if(error)return alert(error.message);}saveWallet();renderShop();};
 updateWalletUI();
+updateAuthUI();syncAuth().catch(console.error);
 initScene();
