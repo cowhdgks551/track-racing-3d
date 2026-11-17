@@ -6,7 +6,7 @@ app.innerHTML=`
 <div id="game"><div class="hud">
  <header class="topbar"><div class="brand">TRACK <span>RACING</span> 3D</div><div class="pill" id="connection">● OFFLINE</div></header>
  <div class="race-hud" id="raceHud"><div class="stat"><small>LAP</small><b id="lap">0 / 3</b></div><div class="stat"><small>TIME</small><b id="time">00:00.0</b></div><div class="stat"><small>SPEED</small><b id="speed">0</b><small>KM/H</small></div><div class="stat"><small>POSITION</small><b id="position">-</b></div></div>
- <div class="roominfo" id="roominfo"></div><div class="leader" id="leader" hidden><strong>RACE ORDER</strong><div id="leaderlist"></div></div>
+ <div class="wallet" id="wallet">🪙 <b id="coinBalance">0</b></div><button class="shop-open" id="openShop">상점</button><div class="roominfo" id="roominfo"></div><div class="leader" id="leader" hidden><strong>RACE ORDER</strong><div id="leaderlist"></div></div>
  <div class="controls"><div class="steer"><button class="control" id="left">◀</button><button class="control" id="right">▶</button></div><div class="pedals"><button class="control" id="brake">BRAKE</button><button class="control go" id="gas">GAS</button></div></div>
  <div id="message">WASD / 방향키로 조작 · 모바일은 화면 버튼</div>
  <section class="panel" id="lobby">
@@ -40,7 +40,22 @@ app.innerHTML=`
   <div class="eyebrow">RACE COMPLETE</div><h2>레이스 결과</h2><div id="teamScore"></div><div id="resultRows"></div>
   <button class="btn" id="again">로비로 돌아가기</button>
  </section>
-</div></div>`;
+ <section class="panel shop-panel" id="shop" hidden>
+  <div class="shop-head"><div><div class="eyebrow">GARAGE & SHOP</div><h2>레이싱 상점</h2></div><button class="close-shop" id="closeShop">✕</button></div>
+  <div class="shop-balance">보유 코인 <b id="shopCoins">0</b> 🪙</div>
+  <div class="field-label">꾸밀 차량</div><div class="segmented shop-cars"><button data-shopcar="acceleration">가속형</button><button data-shopcar="topSpeed">최고속도형</button><button data-shopcar="cornering">코너링형</button><button data-shopcar="balance">밸런스형</button></div>
+  <div class="shop-tabs"><button class="active" data-shoptab="paint">페인트 · 30코인</button><button data-shoptab="decal">문양 · 20코인</button></div>
+  <div id="shopItems" class="shop-items"></div>
+  <div id="decalEditor" hidden>
+   <div class="field-label">문양 위치 조정</div>
+   <label class="range-label">좌우 <input id="decalX" type="range" min="-0.8" max="0.8" step="0.05" value="0"/></label>
+   <label class="range-label">앞뒤 <input id="decalZ" type="range" min="-1.5" max="1.5" step="0.05" value="0"/></label>
+   <label class="range-label">회전 <input id="decalRotation" type="range" min="0" max="360" step="5" value="0"/></label>
+   <button class="btn" id="saveDecalPosition">문양 위치 저장</button>
+  </div>
+  <p class="hint">구매한 페인트와 문양은 차량 클래스별로 보관돼. 문양 위치도 직접 조정할 수 있어.</p>
+ </section>
+</div></div>
 
 const $=id=>document.getElementById(id);
 const TRACKS={
@@ -63,13 +78,39 @@ let raceStart=0,elapsed=0,sendClock=0,solo=false;
 const keys={left:false,right:false,gas:false,brake:false};
 const remotes=new Map(),clock=new THREE.Clock();
 const pointsAward=[10,9,8,7,6,5,4,3,2,1];
+const PAINTS=[{id:'red',name:'레이싱 레드',color:'#ef4444'},{id:'blue',name:'일렉트릭 블루',color:'#2684ff'},{id:'green',name:'네온 그린',color:'#55d66b'},{id:'purple',name:'퍼플 메탈',color:'#9b59d0'},{id:'white',name:'펄 화이트',color:'#f2f3f4'},{id:'black',name:'미드나잇 블랙',color:'#222831'},{id:'orange',name:'레이싱 오렌지',color:'#ff8a24'},{id:'pink',name:'핫 핑크',color:'#f052a5'}];
+const DECALS=[{id:'bolt',name:'번개',glyph:'ϟ'},{id:'star',name:'스타',glyph:'★'},{id:'number',name:'레이싱 넘버',glyph:'03'},{id:'stripe',name:'스트라이프',glyph:'〓'},{id:'flame',name:'파이어',glyph:'♨'},{id:'wing',name:'윙',glyph:'翼'}];
+const walletKey='trackRacing3D_wallet_v1';
+let wallet=loadWallet(),shopCar='balance',shopTab='paint',selectedDecal=null;
+function loadWallet(){try{return JSON.parse(localStorage.getItem(walletKey))||{coins:0,ownedPaint:{},ownedDecal:{},equipped:{}};}catch{return {coins:0,ownedPaint:{},ownedDecal:{},equipped:{}};}}
+function saveWallet(){localStorage.setItem(walletKey,JSON.stringify(wallet));updateWalletUI();}
+function updateWalletUI(){$('coinBalance').textContent=wallet.coins;$('shopCoins').textContent=wallet.coins;}
+function carInventory(type){wallet.ownedPaint[type]??=['default'];wallet.ownedDecal[type]??=[];wallet.equipped[type]??={paint:'default',decal:null,position:{x:0,z:0,rotation:0}};return wallet.equipped[type];}
+function currentPaint(type){const id=carInventory(type).paint;return id==='default'?'#ffd447':PAINTS.find(p=>p.id===id)?.color||'#ffd447';}
+function cosmeticsFor(type){const e=carInventory(type);return {paint:currentPaint(type),decal:e.decal,position:e.position};}
+function grantCoins(amount){if(!Number.isFinite(amount)||amount<=0)return;wallet.coins+=amount;saveWallet();}
+function buyItem(kind,id){const cost=kind==='paint'?30:20,owned=kind==='paint'?wallet.ownedPaint[shopCar]:wallet.ownedDecal[shopCar];if(owned.includes(id)){if(kind==='paint')wallet.equipped[shopCar].paint=id;else{wallet.equipped[shopCar].decal=id;selectedDecal=id;}saveWallet();applyLocalCosmetics();renderShop();return;}
+ if(wallet.coins<cost){alert('코인이 부족합니다. 레이스에 참가해 코인을 모아주세요.');return;}
+ wallet.coins-=cost;owned.push(id);if(kind==='paint')wallet.equipped[shopCar].paint=id;else{wallet.equipped[shopCar].decal=id;selectedDecal=id;}saveWallet();applyLocalCosmetics();renderShop();}
+function renderShop(){updateWalletUI();document.querySelectorAll('[data-shopcar]').forEach(b=>b.classList.toggle('active',b.dataset.shopcar===shopCar));document.querySelectorAll('[data-shoptab]').forEach(b=>b.classList.toggle('active',b.dataset.shoptab===shopTab));const inv=carInventory(shopCar),items=shopTab==='paint'?PAINTS:DECALS,owned=shopTab==='paint'?wallet.ownedPaint[shopCar]:wallet.ownedDecal[shopCar],equipped=shopTab==='paint'?inv.paint:inv.decal;
+ $('shopItems').innerHTML=items.map(item=>{const isOwned=owned.includes(item.id),active=equipped===item.id;return '<button class="shop-item '+(active?'equipped':'')+'" data-buy="'+item.id+'"><span class="swatch" style="'+(shopTab==='paint'?'background:'+item.color:'')+'">'+(shopTab==='decal'?item.glyph:'')+'</span><span><b>'+item.name+'</b><small>'+(isOwned?(active?'장착 중':'보유 · 장착 가능'):(shopTab==='paint'?30:20)+' 코인')+'</small></span><strong>'+(active?'✓':isOwned?'장착':'구매')+'</strong></button>';}).join('');
+ $('shopItems').querySelectorAll('[data-buy]').forEach(b=>b.onclick=()=>buyItem(shopTab,b.dataset.buy));
+ $('decalEditor').hidden=shopTab!=='decal'||!inv.decal;
+ $('decalX').value=inv.position.x;$('decalZ').value=inv.position.z;$('decalRotation').value=inv.position.rotation;
+}
+function makeDecalTexture(id){const item=DECALS.find(d=>d.id===id);const c=document.createElement('canvas');c.width=256;c.height=256;const ctx=c.getContext('2d');ctx.clearRect(0,0,256,256);ctx.fillStyle='#ffffff';ctx.strokeStyle='#ffffff';ctx.textAlign='center';ctx.textBaseline='middle';ctx.font='bold 190px Arial';ctx.shadowColor='#111827';ctx.shadowBlur=5;ctx.fillText(item?.glyph||'★',128,132);const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;return t;}
+function applyCarCosmetics(car,type){if(!car)return;const paint=car.userData.bodyMaterial;if(paint)paint.color.set(currentPaint(type));if(car.userData.decal){car.remove(car.userData.decal);car.userData.decal.material.map?.dispose();}const e=carInventory(type);if(e.decal){const mat=new THREE.MeshBasicMaterial({map:makeDecalTexture(e.decal),transparent:true,depthWrite:false,side:THREE.DoubleSide});const mesh=new THREE.Mesh(new THREE.PlaneGeometry(.85,.85),mat);mesh.rotation.x=-Math.PI/2;mesh.rotation.z=(e.position.rotation||0)*Math.PI/180;mesh.position.set(e.position.x,.999,e.position.z);car.add(mesh);car.userData.decal=mesh;} }
+function applyLocalCosmetics(){applyCarCosmetics(localCar,carId);send({type:'cosmetics',cosmetics:cosmeticsFor(carId)});}
+function awardRaceCoins(m){const result=m.results?.find(r=>r.id===myId);if(!result||m.raceId===lastAwardedRace)return;lastAwardedRace=m.raceId||('local-'+Date.now());grantCoins(result.coins||0);$('message').textContent='레이스 보상 +' +(result.coins||0)+' 코인';}
+let lastAwardedRace=null;
+
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const setStatus=t=>$('connection').textContent=t;
 function send(o){if(ws&&ws.readyState===1)ws.send(JSON.stringify(o));}
 function showPanel(id){['lobby','setup','results'].forEach(k=>$(k).hidden=k!==id);}
 function makeCar(color){
  const g=new THREE.Group(),paint=new THREE.MeshStandardMaterial({color,roughness:.35,metalness:.12}),dark=new THREE.MeshStandardMaterial({color:0x17212a,roughness:.7});
- const body=new THREE.Mesh(new THREE.BoxGeometry(2.1,.58,3.8),paint);body.position.y=.7;body.castShadow=true;g.add(body);
+ const body=new THREE.Mesh(new THREE.BoxGeometry(2.1,.58,3.8),paint);body.position.y=.7;body.castShadow=true;g.add(body);g.userData.bodyMaterial=paint;
  const cabin=new THREE.Mesh(new THREE.BoxGeometry(1.5,.62,1.7),new THREE.MeshStandardMaterial({color:0x9fc2ce,metalness:.2,roughness:.25}));cabin.position.set(0,1.23,-.18);cabin.castShadow=true;g.add(cabin);
  for(const sx of [-1.06,1.06])for(const sz of [-1.2,1.2]){const w=new THREE.Mesh(new THREE.BoxGeometry(.34,.58,.8),dark);w.position.set(sx,.44,sz);g.add(w);}
  const spoiler=new THREE.Mesh(new THREE.BoxGeometry(2.05,.12,.3),dark);spoiler.position.set(0,1.05,-1.72);g.add(spoiler);
@@ -81,7 +122,7 @@ function initScene(){
  renderer=new THREE.WebGLRenderer({antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setSize(innerWidth,innerHeight);renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;$('game').prepend(renderer.domElement);
  scene.add(new THREE.HemisphereLight(0xffffff,0x60715b,1.8));const sun=new THREE.DirectionalLight(0xffffff,2);sun.position.set(-35,55,25);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);scene.add(sun);
  ground=new THREE.Mesh(new THREE.PlaneGeometry(500,500),new THREE.MeshStandardMaterial({color:0x719e6b,roughness:1}));ground.rotation.x=-Math.PI/2;ground.position.y=-.16;ground.receiveShadow=true;scene.add(ground);
- localCar=makeCar(0xffd447);scene.add(localCar);buildTrack(trackId);resetCar();
+ localCar=makeCar(0xffd447);scene.add(localCar);applyCarCosmetics(localCar,carId);buildTrack(trackId);resetCar();
  addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
  animate();
 }
@@ -116,7 +157,7 @@ function resetCar(){
 }
 function connect(){
  const proto=location.protocol==='https:'?'wss':'ws';ws=new WebSocket(`${proto}://${location.host}/ws`);
- ws.onopen=()=>send({type:'join',name:$('nickname').value.trim()||'Racer',room:$('room').value.trim()||'SPEED',car:carId,team});
+ ws.onopen=()=>send({type:'join',name:$('nickname').value.trim()||'Racer',room:$('room').value.trim()||'SPEED',car:carId,team,cosmetics:cosmeticsFor(carId)});
  ws.onmessage=e=>{const m=JSON.parse(e.data);
   if(m.type==='joined'){myId=m.id;online=true;joined=true;setStatus('● ONLINE');}
   if(m.type==='error')alert(m.message);
@@ -154,7 +195,7 @@ function updateRemoteData(list){
  players=list||players;const ids=new Set();
  for(const p of players){if(p.id===myId)continue;ids.add(p.id);let r=remotes.get(p.id);
   if(!r){r={car:makeCar(p.color||0x42a5ff),data:p};scene.add(r.car);remotes.set(p.id,r);}
-  r.data=p;r.car.visible=true;
+  r.data=p;r.car.visible=true;if(p.cosmetics){if(p.cosmetics.paint)r.car.userData.bodyMaterial.color.set(p.cosmetics.paint);if(p.cosmetics.decal&&!r.car.userData.decal){const mat=new THREE.MeshBasicMaterial({map:makeDecalTexture(p.cosmetics.decal),transparent:true,side:THREE.DoubleSide});const mesh=new THREE.Mesh(new THREE.PlaneGeometry(.85,.85),mat);mesh.rotation.x=-Math.PI/2;mesh.position.set(p.cosmetics.position?.x||0,.999,p.cosmetics.position?.z||0);r.car.add(mesh);r.car.userData.decal=mesh;}}
  }
  for(const [id,r] of remotes)if(!ids.has(id)){scene.remove(r.car);remotes.delete(id);}
  const ranked=[...players].sort((a,b)=>b.lap-a.lap||b.progress-a.progress);
@@ -168,20 +209,21 @@ function startRace(){
 function finishRace(){
  if(finished)return;finished=true;started=false;speed=0;elapsed=performance.now()-raceStart;
  $('message').textContent='FINISH! 결과를 기다리는 중';
- if(solo){showResults({mode:'individual',results:[{id:myId,name:$('nickname').value.trim()||'Racer',team:null,finished:true,rank:1,points:10}],teams:{red:0,blue:0,winner:'draw'}});}
+ if(solo){showResults({mode:'individual',results:[{id:myId,name:$('nickname').value.trim()||'Racer',team:null,finished:true,rank:1,points:10,coins:10}],raceId:'solo-'+Date.now(),teams:{red:0,blue:0,winner:'draw'}});}
  else send({type:'finish',elapsed});
 }
 function showResults(m){
+ awardRaceCoins(m);
  started=false;finished=true;showPanel('results');$('leader').hidden=true;
  if(m.mode==='team'){
   const t=m.teams;$('teamScore').innerHTML=`<div class="scoreboard"><div class="red-score"><small>RED TEAM</small><b>${t.red}</b></div><div class="versus">VS</div><div class="blue-score"><small>BLUE TEAM</small><b>${t.blue}</b></div></div><div class="winner">${t.winner==='draw'?'무승부':t.winner==='red'?'🔴 레드팀 승리':'🔵 블루팀 승리'}</div>`;
  }else $('teamScore').innerHTML='';
- $('resultRows').innerHTML=m.results.map(r=>`<div class="result-row ${r.finished?'':'dnf'}"><b>${r.rank||'DNF'}</b><span>${r.team==='red'?'🔴':r.team==='blue'?'🔵':'🏁'} ${escapeHtml(r.name)}</span><strong>${r.points}점</strong></div>`).join('');
+ $('resultRows').innerHTML=m.results.map(r=>`<div class="result-row ${r.finished?'':'dnf'}"><b>${r.rank||'DNF'}</b><span>${r.team==='red'?'🔴':r.team==='blue'?'🔵':'🏁'} ${escapeHtml(r.name)}</span><strong>${r.points}점 · +${r.coins||0}🪙</strong></div>`).join('');
  $('again').textContent=myId===hostId?'로비로 돌아가기':'결과 확인 완료';
 }
 function setMode(v){mode=v;if(online)send({type:'configure',mode,track:trackId});}
 function setTrack(v){trackId=v;activeTrack=v;buildTrack(v);resetCar();if(online)send({type:'configure',mode,track:trackId});}
-function selectCar(v){carId=v;if(online)send({type:'select',car:carId,team});}
+function selectCar(v){carId=v;applyCarCosmetics(localCar,carId);if(online)send({type:'select',car:carId,team});}
 function selectTeam(v){team=v;if(online)send({type:'select',car:carId,team});}
 function startLocal(){started=true;finished=false;elapsed=0;raceStart=performance.now();resetCar();$('raceHud').style.display='flex';showPanel('');$('message').textContent='GO! 3랩을 완주하세요!';}
 function update(dt){
@@ -231,4 +273,12 @@ document.querySelectorAll('[data-car]').forEach(b=>b.onclick=()=>selectCar(b.dat
 document.querySelectorAll('[data-team]').forEach(b=>b.onclick=()=>selectTeam(b.dataset.team));
 $('startRace').onclick=()=>{if(solo){startLocal();return;}if(myId===hostId)send({type:'start'});};
 $('again').onclick=()=>{showPanel('setup');if(solo){resetCar();$('startRace').disabled=false;}else send({type:'restart'});};
+$('openShop').onclick=()=>{shopCar=carId;renderShop();showPanel('shop');};
+$('closeShop').onclick=()=>showPanel(joined?'setup':'lobby');
+document.querySelectorAll('[data-shopcar]').forEach(b=>b.onclick=()=>{shopCar=b.dataset.shopcar;renderShop();});
+document.querySelectorAll('[data-shoptab]').forEach(b=>b.onclick=()=>{shopTab=b.dataset.shoptab;renderShop();});
+function updateDecalPreview(){const e=carInventory(shopCar);e.position={x:Number($('decalX').value),z:Number($('decalZ').value),rotation:Number($('decalRotation').value)};if(shopCar===carId)applyLocalCosmetics();}
+['decalX','decalZ','decalRotation'].forEach(id=>$(id).addEventListener('input',updateDecalPreview));
+$('saveDecalPosition').onclick=()=>{updateDecalPreview();saveWallet();renderShop();};
+updateWalletUI();
 initScene();
