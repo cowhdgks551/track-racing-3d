@@ -492,7 +492,8 @@ function stepVehicle(dt,stats){
  const resistance=.22+.012*Math.abs(speed)+.002*speed*speed;
  // Drift has a hard speed-loss budget even at full throttle.
  const driftLoss=activeDrift?(5.5+.14*Math.max(0,speed)):0;
- const acceleration=engine-back-Math.sign(speed)*(resistance+driftLoss);
+ const rawAcceleration=engine-back-Math.sign(speed)*(resistance+driftLoss);
+ const acceleration=activeDrift?Math.min(-3.8,rawAcceleration):rawAcceleration;
  speed=clamp(speed+acceleration*dt,-stats.max*.30,stats.max);
  if(!throttle&&!reverse&&Math.abs(speed)<.15)speed=0;
  const grip=clamp(stats.grip,.65,1.3);
