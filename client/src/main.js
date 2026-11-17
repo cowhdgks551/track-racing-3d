@@ -138,9 +138,9 @@ function renderShop(){updateWalletUI();document.querySelectorAll('[data-shopcar]
 function makeDecalTexture(id){const item=DECALS.find(d=>d.id===id);const c=document.createElement('canvas');c.width=256;c.height=256;const ctx=c.getContext('2d');ctx.clearRect(0,0,256,256);ctx.fillStyle='#ffffff';ctx.strokeStyle='#ffffff';ctx.textAlign='center';ctx.textBaseline='middle';ctx.font='bold 190px Arial';ctx.shadowColor='#111827';ctx.shadowBlur=5;ctx.fillText(item?.glyph||'★',128,132);const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;return t;}
 function applyCarCosmetics(car,type){if(!car)return;const paint=car.userData.bodyMaterial;if(paint)paint.color.set(currentPaint(type));if(car.userData.decal){car.remove(car.userData.decal);car.userData.decal.material.map?.dispose();}const e=carInventory(type);if(e.decal){const mat=new THREE.MeshBasicMaterial({map:makeDecalTexture(e.decal),transparent:true,depthWrite:false,side:THREE.DoubleSide});const mesh=new THREE.Mesh(new THREE.PlaneGeometry(.85,.85),mat);mesh.rotation.x=-Math.PI/2;mesh.rotation.z=(e.position.rotation||0)*Math.PI/180;mesh.position.set(e.position.x,.999,e.position.z);car.add(mesh);car.userData.decal=mesh;} }
 function applyLocalCosmetics(){applyCarCosmetics(localCar,carId);send({type:'cosmetics',cosmetics:cosmeticsFor(carId)});}
-async function awardRaceCoins(m){const result=m.results?.find(r=>r.id===myId);if(!result||m.raceId===lastAwardedRace)return;lastAwardedRace=m.raceId||('local-'+Date.now());if(accountUser&&m.raceId){const teamResult=m.teams?.winner==='draw'?'draw':result.team===m.teams?.winner?'win':'loss';const {data,error}=await supabase.rpc('claim_race_reward',{p_race_id:m.raceId,p_mode:m.mode,p_track_id:trackId,p_vehicle_class:carId,p_finish_rank:result.rank||null,p_finished:!!result.finished,p_team_id:result.team||null,p_team_result:teamResult});if(error){$('message').textContent='보상 저장 실패: '+error.message;return;}wallet.coins=data.balance??wallet.coins;await loadCloudAccount();}else grantCoins(result.coins||0);$('message').textContent='레이스 보상 +' +(result.coins||0)+' 코인';}
+async async function awardRaceCoins(m){const result=m.results?.find(r=>r.id===myId);if(!result||m.raceId===lastAwardedRace)return;lastAwardedRace=m.raceId||('local-'+Date.now());if(accountUser&&m.raceId){const teamResult=m.teams?.winner==='draw'?'draw':result.team===m.teams?.winner?'win':'loss';const {data,error}=await supabase.rpc('claim_race_reward',{p_race_id:m.raceId,p_mode:m.mode,p_track_id:trackId,p_vehicle_class:carId,p_finish_rank:result.rank||null,p_finished:!!result.finished,p_team_id:result.team||null,p_team_result:teamResult});if(error){$('message').textContent='보상 저장 실패: '+error.message;return;}wallet.coins=data.balance??wallet.coins;await loadCloudAccount();}else grantCoins(result.coins||0);$('message').textContent='레이스 보상 +' +(result.coins||0)+' 코인';}
 let lastAwardedRace=null;
-async function loadCloudAccount(){
+async async function loadCloudAccount(){
  if(!accountUser)return;
  const uid=accountUser.id;
  const [profile,walletRow,vehicles,inventory,tx,races]=await Promise.all([
@@ -167,7 +167,7 @@ async function loadCloudAccount(){
  if(profile.data?.nickname)$('nickname').value=profile.data.nickname;
  if(localCar)applyLocalCosmetics();
 }
-async function renderGarage(){
+async async function renderGarage(){
  if(!accountUser){alert('차고를 이용하려면 먼저 로그인해주세요.');showPanel('lobby');return;}
  try{await loadCloudAccount();}catch(e){alert('차고 정보를 불러오지 못했습니다: '+e.message);return;}
  $('garageCoins').textContent=wallet.coins;
@@ -321,7 +321,9 @@ function renderVehicleRatings(){
  document.querySelectorAll('[data-grade]').forEach(b=>b.classList.toggle('active',b.dataset.grade===vehicleGrade));
 }
 async function selectGrade(grade){
- if(!GRADE_PEAK[grade])return;vehicleGrade=grade;renderVehicleRatings();
+ if(!GRADE_PEAK[grade])return;
+ if(accountUser&&!cloudGarage?.vehicles?.some(v=>v.vehicle_class===carId&&v.vehicle_grade===grade)){alert('먼저 상점에서 해당 등급 차량을 구매해주세요.');return;}
+ vehicleGrade=grade;renderVehicleRatings();
  if(accountUser){const {error}=await supabase.rpc('select_vehicle',{p_vehicle_class:carId,p_grade:grade});if(error){alert(error.message);return;}}
  if(online)send({type:'select',car:carId,grade,team});
 }
