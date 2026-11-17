@@ -280,6 +280,44 @@ function buildTrack(id){
  // Start/finish checker strip
  const start=curve.getPointAt(0),tan=curve.getTangentAt(0),normal=new THREE.Vector3(-tan.z,0,tan.x).normalize();
  for(let i=0;i<10;i++)for(let j=0;j<2;j++){const tile=new THREE.Mesh(new THREE.BoxGeometry(width/10,.05,.65),new THREE.MeshStandardMaterial({color:(i+j)%2?0x20252a:0xffffff}));const offset=(i-4.5)*width/10;tile.position.copy(start).addScaledVector(normal,offset).addScaledVector(tan,j*.65-.32);tile.position.y=.11;tile.rotation.y=-Math.atan2(tan.z,tan.x);trackGroup.add(tile);}
+ // Trackside 3D environment: kerbs, safety barriers, trees, stands and pit buildings.
+ const curbRed=new THREE.MeshStandardMaterial({color:0xc82d34,roughness:.82});
+ const curbWhite=new THREE.MeshStandardMaterial({color:0xf4f1e9,roughness:.8});
+ const barrierMat=new THREE.MeshStandardMaterial({color:0xa8b2b9,metalness:.25,roughness:.58});
+ const trunkMat=new THREE.MeshStandardMaterial({color:0x735338,roughness:1});
+ const leafMat=new THREE.MeshStandardMaterial({color:0x315b36,roughness:1});
+ const buildingMat=new THREE.MeshStandardMaterial({color:0xc9d1d5,metalness:.15,roughness:.75});
+ const windowMat=new THREE.MeshStandardMaterial({color:0x35566a,metalness:.35,roughness:.25});
+ const addBox=(w,h,d,mat,px,py,pz,rotation=0)=>{const mesh=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);mesh.position.set(px,py,pz);mesh.rotation.y=rotation;mesh.castShadow=true;mesh.receiveShadow=true;trackGroup.add(mesh);return mesh;};
+ for(let i=0;i<160;i++){
+  const t=i/160,p=curve.getPointAt(t),tangent=curve.getTangentAt(t),normal=new THREE.Vector3(-tangent.z,0,tangent.x).normalize(),rot=-Math.atan2(tangent.z,tangent.x);
+  for(const side of [-1,1]){
+   const edge=p.clone().addScaledVector(normal,side*5.15);
+   addBox(.78,.12,1.05,i%6<3?curbRed:curbWhite,edge.x,.12,edge.z,rot);
+   if(i%3===0){const b=p.clone().addScaledVector(normal,side*8.2);addBox(.18,.9,2.4,barrierMat,b.x,.55,b.z,rot);}
+  }
+ }
+ // Deterministic placement keeps every player's scenery consistent.
+ for(let i=0;i<85;i++){
+  const t=((i*37)%89)/89,p=curve.getPointAt(t),tangent=curve.getTangentAt(t),normal=new THREE.Vector3(-tangent.z,0,tangent.x).normalize();
+  const side=i%2?1:-1,offset=19+(i*13%29),pos=p.clone().addScaledVector(normal,side*offset);
+  const height=2.6+(i*7%6)*.42;
+  addBox(.38,height,.38,trunkMat,pos.x,height/2,pos.z);
+  const canopy=new THREE.Mesh(new THREE.ConeGeometry(1.3+(i%4)*.2,3.4+(i%3)*.4,6),leafMat);canopy.position.set(pos.x,height+1,pos.z);canopy.castShadow=true;trackGroup.add(canopy);
+ }
+ for(let i=0;i<3;i++){
+  const t=(.02+i*.34)%1,p=curve.getPointAt(t),tangent=curve.getTangentAt(t),normal=new THREE.Vector3(-tangent.z,0,tangent.x).normalize(),pos=p.clone().addScaledVector(normal,19);
+  const rot=-Math.atan2(tangent.z,tangent.x);
+  addBox(17,3.5,5,buildingMat,pos.x,1.75,pos.z,rot);
+  addBox(16.5,1.25,5.15,windowMat,pos.x,2.35,pos.z,rot);
+  addBox(19,.28,6,barrierMat,pos.x,3.65,pos.z,rot);
+ }
+ for(let i=0;i<4;i++){
+  const t=(.14+i*.22)%1,p=curve.getPointAt(t),tangent=curve.getTangentAt(t),normal=new THREE.Vector3(-tangent.z,0,tangent.x).normalize(),pos=p.clone().addScaledVector(normal,-24);
+  const rot=-Math.atan2(tangent.z,tangent.x);
+  addBox(15,2.2,5,barrierMat,pos.x,1.1,pos.z,rot);
+  addBox(15,.4,7,buildingMat,pos.x,2.6,pos.z,rot);
+ }
  // Simple scenery markers
  const postMat=new THREE.MeshStandardMaterial({color:0xf6f0df});
  for(let i=0;i<24;i++){const p=curve.getPointAt(i/24),t=curve.getTangentAt(i/24),nn=new THREE.Vector3(-t.z,0,t.x).normalize();p.addScaledVector(nn,sideSign(i)*13);const post=new THREE.Mesh(new THREE.BoxGeometry(.5,1.8,.5),postMat);post.position.set(p.x,.9,p.z);trackGroup.add(post);}
