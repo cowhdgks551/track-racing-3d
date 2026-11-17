@@ -22,7 +22,7 @@ function publicPlayers(room){
  return [...room.players.values()].map(p=>({
   id:p.id,name:p.name,car:p.car,team:p.team,color:p.color,x:p.x,z:p.z,
   rotation:p.rotation,lap:p.lap,progress:p.progress,finished:p.finished,
-  finishTime:p.finishTime,ready:p.ready
+  finishTime:p.finishTime,ready:p.ready,cosmetics:p.cosmetics||null
  }));
 }
 function snapshot(room){
@@ -45,7 +45,13 @@ function endRace(room){
  const red=results.filter(r=>r.team==='red').reduce((s,r)=>s+r.points,0);
  const blue=results.filter(r=>r.team==='blue').reduce((s,r)=>s+r.points,0);
  const winner=red===blue?'draw':red>blue?'red':'blue';
- const payload={type:'race-results',mode:room.config.mode,results,teams:{red,blue,winner}};
+ for(const r of results){
+  if(room.config.mode==='team'){
+   r.coins=r.team===winner?10:(r.finished?3:1);
+   if(winner==='draw')r.coins=r.finished?5:1;
+  }else r.coins=r.finished?(POINTS[(r.rank||99)-1]||0):0;
+ }
+ const payload={type:'race-results',raceId:crypto.randomUUID(),mode:room.config.mode,results,teams:{red,blue,winner}};
  broadcast(room,payload);
  room.results=payload;
 }
@@ -63,7 +69,7 @@ wss.on('connection',ws=>{
    if(room.started)return send(ws,{type:'error',message:'경기가 진행 중인 방에는 입장할 수 없습니다.'});
    if(room.players.size>=MAX_PLAYERS)return send(ws,{type:'error',message:'방 정원이 가득 찼습니다. (최대 10명)'});
    const p={id:ws.id,ws,name:String(msg.name||'Racer').slice(0,14),car:['acceleration','topSpeed','cornering','balance'].includes(msg.car)?msg.car:'balance',
-    team:msg.team==='blue'?'blue':msg.team==='red'?'red':null,color:'#ff5b55',x:0,z:0,rotation:0,lap:0,progress:0,finished:false,finishTime:null,ready:false};
+    team:msg.team==='blue'?'blue':msg.team==='red'?'red':null,cosmetics:msg.cosmetics||null,color:'#ff5b55',x:0,z:0,rotation:0,lap:0,progress:0,finished:false,finishTime:null,ready:false};
    room.players.set(p.id,p);if(!room.hostId)room.hostId=p.id;ws.roomCode=code;
    send(ws,{type:'joined',id:p.id});
    roomState(room);return;
@@ -74,6 +80,9 @@ wss.on('connection',ws=>{
    const name=String(msg.name||'').trim().slice(0,14);
    if(!name)return send(player.ws,{type:'error',message:'닉네임을 입력해주세요.'});
    player.name=name;
+   roomState(room);
+  }else if(msg.type==='cosmetics'){
+   const c=msg.cosmetics||{};player.cosmetics={paint:typeof c.paint==='string'?c.paint:'#ffd447',decal:typeof c.decal==='string'?c.decal:null,position:{x:Math.max(-.8,Math.min(.8,Number(c.position?.x)||0)),z:Math.max(-1.5,Math.min(1.5,Number(c.position?.z)||0)),rotation:((Number(c.position?.rotation)||0)%360)}};
    roomState(room);
   }else if(msg.type==='configure'){
    if(player.id!==room.hostId||room.started)return;
