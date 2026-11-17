@@ -17,3 +17,13 @@
 #signupNickname{grid-column:1/-1}
 
 .race-hud:not([hidden]){display:flex}
+
+/* Mobile steering touch targets: 1.5x the former 62px buttons. */
+@media (pointer:coarse) and (max-width:799px){
+ .steer .control{width:93px;height:93px;min-width:93px;min-height:93px;font-size:30px}
+ .steer{gap:12px}
+ .controls{left:10px;right:10px;bottom:max(12px,env(safe-area-inset-bottom))}
+ .pedals .control{width:68px;height:68px}
+ #message{bottom:120px}
+}
+@media (pointer:coarse) and (max-width:390px){.steer .control{width:84px;height:84px;min-width:84px;min-height:84px}}
