@@ -117,7 +117,7 @@ wss.on('connection',ws=>{
    for(const p of room.players.values()){p.lap=0;p.progress=0;p.finished=false;p.finishTime=null;p.x=0;p.z=0;p.ready=true;}
    broadcast(room,{type:'race-start',at:Date.now(),config:room.config});
    roomState(room);
-   room.timeout=setTimeout(()=>endRace(room),240000);
+   room.timeout=setTimeout(()=>endRace(room),1800000);
   }else if(msg.type==='state'){
    if(!room.started||player.finished)return;
    player.x=Number.isFinite(msg.x)?Math.max(-250,Math.min(250,msg.x)):player.x;

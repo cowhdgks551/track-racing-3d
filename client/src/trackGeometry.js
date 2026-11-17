@@ -1,5 +1,16 @@
 import * as THREE from 'three';
 
+export const metersPerSecondToKmh = speed => speed * 3.6;
+
+export function createMeterCurve(points, lengthMeters) {
+  const raw = new THREE.CatmullRomCurve3(points.map(([x,z])=>new THREE.Vector3(x,0,z)),true,'centripetal');
+  raw.arcLengthDivisions=8192;raw.updateArcLengths();
+  const scale=lengthMeters/raw.getLength();
+  const curve=new THREE.CatmullRomCurve3(raw.points.map(p=>p.clone().multiplyScalar(scale)),true,'centripetal');
+  curve.arcLengthDivisions=8192;curve.updateArcLengths();
+  return curve;
+}
+
 // All road surfaces share the same samples and seam. No second spline fitting
 // around offset points: that used to make the edging wander away from the road.
 export function trackStrip(curve, innerOffset, outerOffset, height, segments = 400) {

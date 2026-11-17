@@ -25,6 +25,8 @@ export class ArcadeVehiclePhysics {
     this.stop();
   }
 
+  setShape(width, length) { this.collider.setHalfExtents({x:width/2,y:.5,z:length/2}); }
+
   setObstacles(boxes) {
     for (const collider of this.obstacles) this.world.removeCollider(collider, true);
     this.obstacles = boxes.map(({ x, y, z, width, height, depth, rotation }) =>
