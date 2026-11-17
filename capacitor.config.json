@@ -1,0 +1,8 @@
+{
+  "appId": "com.trackracing3d.game",
+  "appName": "TRACK RACING 3D",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  }
+}
