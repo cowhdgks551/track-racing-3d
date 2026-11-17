@@ -13,7 +13,8 @@
   "dependencies": {
     "express": "^4.21.2",
     "three": "^0.171.0",
-    "ws": "^8.18.0"
+    "ws": "^8.18.0",
+    "@supabase/supabase-js": "2.95.0"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",
