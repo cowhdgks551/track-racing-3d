@@ -142,7 +142,7 @@ function applyRoom(m){
  document.querySelectorAll('[data-car]').forEach(b=>b.classList.toggle('active',b.dataset.car===carId));
  document.querySelectorAll('[data-team]').forEach(b=>b.classList.toggle('active',b.dataset.team===team));
  $('teamSelect').hidden=mode!=='team';
- showPanel('setup');
+ showPanel(m.started?'':'setup');
  updateRemoteData(players);
 }
 let activeTrack='yeongam';
@@ -164,7 +164,9 @@ function startRace(){
 }
 function finishRace(){
  if(finished)return;finished=true;started=false;speed=0;elapsed=performance.now()-raceStart;
- $('message').textContent='FINISH! 결과를 기다리는 중';send({type:'finish',elapsed});
+ $('message').textContent='FINISH! 결과를 기다리는 중';
+ if(solo){showResults({mode:'individual',results:[{id:myId,name:$('nickname').value.trim()||'Racer',team:null,finished:true,rank:1,points:10}],teams:{red:0,blue:0,winner:'draw'}});}
+ else send({type:'finish',elapsed});
 }
 function showResults(m){
  started=false;finished=true;showPanel('results');$('leader').hidden=true;
