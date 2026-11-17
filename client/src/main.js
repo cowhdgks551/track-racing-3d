@@ -5,21 +5,21 @@ const app=document.querySelector('#app');
 app.innerHTML=`
 <div id="game"><div class="hud">
  <header class="topbar"><div class="brand">TRACK <span>RACING</span> 3D</div><div class="pill" id="connection">● OFFLINE</div></header>
- <div class="race-hud" id="raceHud"><div class="stat"><small>LAP</small><b id="lap">0 / 3</b></div><div class="stat"><small>TIME</small><b id="time">00:00.0</b></div><div class="stat"><small>SPEED</small><b id="speed">0</b><small>KM/H</small></div><div class="stat"><small>POSITION</small><b id="position">-</b></div></div>
- <div class="wallet" id="wallet">🪙 <b id="coinBalance">0</b></div><button class="garage-open" id="openGarage">차고</button><button class="shop-open" id="openShop">상점</button><div class="roominfo" id="roominfo"></div><div class="leader" id="leader" hidden><strong>RACE ORDER</strong><div id="leaderlist"></div></div>
- <div class="controls"><div class="steer"><button class="control" id="left">◀</button><button class="control" id="right">▶</button></div><div class="pedals"><button class="control" id="brake">BRAKE</button><button class="control go" id="gas">GAS</button></div></div>
- <div id="message">WASD / 방향키로 조작 · 모바일은 화면 버튼</div>
+ <div class="race-hud" id="raceHud" hidden><div class="stat"><small>LAP</small><b id="lap">0 / 3</b></div><div class="stat"><small>TIME</small><b id="time">00:00.0</b></div><div class="stat"><small>SPEED</small><b id="speed">0</b><small>KM/H</small></div><div class="stat"><small>POSITION</small><b id="position">-</b></div></div>
+ <div class="wallet" id="wallet" hidden>🪙 <b id="coinBalance">0</b></div><button class="garage-open" id="openGarage" hidden>차고</button><button class="shop-open" id="openShop" hidden>상점</button><div class="roominfo" id="roominfo" hidden></div><div class="leader" id="leader" hidden><strong>RACE ORDER</strong><div id="leaderlist"></div></div>
+ <div class="controls" id="raceControls" hidden><div class="steer"><button class="control" id="left">◀</button><button class="control" id="right">▶</button></div><div class="pedals"><button class="control" id="brake">BRAKE</button><button class="control go" id="gas">GAS</button></div></div>
+ <div id="message" hidden>WASD / 방향키로 조작 · 모바일은 화면 버튼</div>
  <section class="panel" id="lobby">
   <div class="eyebrow">ONLINE CIRCUIT RACING</div><h1>TRACK <span>RACING</span> 3D</h1><p class="sub">국내 서킷에서 펼쳐지는 온라인 레이싱</p>
   <div class="account-box" id="accountBox">
    <div class="account-title">PLAYER ACCOUNT <span id="authStatus">게스트 플레이</span></div>
-   <div class="account-fields"><input class="field" id="accountEmail" type="email" autocomplete="email" placeholder="이메일"/><input class="field" id="accountPassword" type="password" autocomplete="current-password" placeholder="비밀번호"/></div>
-   <div class="account-actions"><button class="btn" id="signIn">로그인</button><button class="btn secondary" id="signUp">회원가입</button><button class="btn secondary" id="signOut" hidden>로그아웃</button></div>
+   <div class="account-fields"><input class="field" id="accountEmail" type="email" autocomplete="email" placeholder="이메일"/><input class="field" id="accountPassword" type="password" autocomplete="current-password" placeholder="비밀번호"/><input class="field" id="signupNickname" maxlength="14" autocomplete="nickname" placeholder="회원가입 닉네임 (2~14자)" hidden/></div>
+   <div class="account-actions"><button class="btn" id="signIn">로그인</button><button class="btn secondary" id="signUp">회원가입</button><button class="btn secondary" id="signOut" hidden>로그아웃</button><button class="btn secondary" id="cancelSignUp" hidden>로그인으로 돌아가기</button></div>
    <p class="hint" id="accountMessage">로그인하면 코인과 차고가 계정에 안전하게 저장됩니다.</p>
   </div>
-  <div class="setup-grid"><label>닉네임<input class="field" id="nickname" maxlength="14" value="Racer"/></label><label>방 코드<input class="field" id="room" maxlength="8" value="SPEED"/></label></div>
+  <div id="mainMenu" hidden><p class="hint">레이싱 모드를 선택하세요.</p><div class="setup-grid"><label>닉네임<input class="field" id="nickname" maxlength="14" value="Racer" readonly/></label><label>방 코드<input class="field" id="room" maxlength="8" value="SPEED"/></label></div>
   <button class="btn" id="join">온라인 방 만들기 / 입장</button><button class="btn secondary" id="solo">혼자 연습하기</button><button class="btn secondary" id="timeAttack">⏱ 타임어택 도전</button>
-  <p class="hint">온라인 최대 10명 · 3랩 · 팀전은 5대5</p>
+  <p class="hint">온라인 최대 10명 · 3랩 · 팀전은 5대5</p></div>
  </section>
  <section class="panel setup-panel" id="setup" hidden>
   <div class="eyebrow">RACE SETTINGS</div><h2>레이스 설정</h2>
@@ -43,7 +43,7 @@ app.innerHTML=`
    <button data-grade="B" class="grade-choice"><b>B</b><small>최고 70</small></button>
    <button data-grade="A" class="grade-choice"><b>A</b><small>최고 75</small></button>
   </div>
-  <div class="vehicle-stat-panel" id="vehicleStats"></div><div class="field-label">차량 구매 · 등급별 독립 차량</div><div id="vehicleShop" class="vehicle-shop"></div><div class="field-label">타임어택 기록실</div><div id="timeAttackBoard" class="time-attack-board"><button class="btn secondary" id="refreshRecords">기록 불러오기</button></div>
+  <div class="vehicle-stat-panel" id="vehicleStats"></div><div id="timeAttackRecords" hidden><div class="field-label">타임어택 기록실</div><div id="timeAttackBoard" class="time-attack-board"><button class="btn secondary" id="refreshRecords">기록 불러오기</button></div></div>
   <div id="teamSelect" hidden><div class="field-label">팀 선택</div><div class="segmented team-segment"><button data-team="red">🔴 레드팀</button><button data-team="blue">🔵 블루팀</button></div></div>
   <div class="nickname-edit"><label for="nicknameEdit">내 닉네임</label><div><input class="field" id="nicknameEdit" maxlength="14" placeholder="닉네임 입력"/><button class="btn" id="saveNickname">변경</button></div></div>
   <div class="room-roster"><div><b>참가자</b><span id="rosterCount">1 / 10</span></div><div id="roster"></div></div>
@@ -65,7 +65,7 @@ app.innerHTML=`
  <section class="panel shop-panel" id="shop" hidden>
   <div class="shop-head"><div><div class="eyebrow">GARAGE & SHOP</div><h2>레이싱 상점</h2></div><button class="close-shop" id="closeShop">✕</button></div>
   <div class="shop-balance">보유 코인 <b id="shopCoins">0</b> 🪙</div>
-  <div class="field-label">꾸밀 차량</div><div class="segmented shop-cars"><button data-shopcar="acceleration">가속형</button><button data-shopcar="topSpeed">최고속도형</button><button data-shopcar="cornering">코너링형</button><button data-shopcar="balance">밸런스형</button></div>
+  <div class="field-label">차량 구매 · 등급별 독립 차량</div><div id="vehicleShop" class="vehicle-shop"></div><div class="field-label">꾸밀 차량</div><div class="segmented shop-cars"><button data-shopcar="acceleration">가속형</button><button data-shopcar="topSpeed">최고속도형</button><button data-shopcar="cornering">코너링형</button><button data-shopcar="balance">밸런스형</button></div>
   <div class="shop-tabs"><button class="active" data-shoptab="paint">페인트 · 30코인</button><button data-shoptab="decal">문양 · 20코인</button></div>
   <div id="shopItems" class="shop-items"></div>
   <div id="decalEditor" hidden>
@@ -177,7 +177,7 @@ async function loadCloudAccount(){
   wallet.equipped[type]={paint:paint?.item_id||'default',decal:decal?.item_id||null,position:decal?.placement||{x:0,z:0,rotation:0}};
  }
  updateWalletUI();
- if(profile.data?.nickname)$('nickname').value=profile.data.nickname;
+ if(profile.data?.nickname)$('nickname').value=profile.data.nickname;else if(accountUser.user_metadata?.nickname)$('nickname').value=accountUser.user_metadata.nickname;
  if(localCar)applyLocalCosmetics();
 }
 async function renderGarage(){
@@ -191,18 +191,52 @@ async function renderGarage(){
  $('garageHistory').innerHTML=history.length?history.map(h=>'<div class="history-row"><span>'+escapeHtml(h.label)+'</span><b class="'+(h.amount<0?'negative':'positive')+'">'+(h.amount>0?'+':'')+h.amount+' 🪙</b></div>').join(''):'<p class="hint">아직 기록이 없습니다.</p>';
  showPanel('garage');
 }
-async function syncAuth(){
- const {data:{session}}=await supabase.auth.getSession();accountUser=session?.user||null;updateAuthUI();if(accountUser)await loadCloudAccount();
+let signupMode=false;
+function notify(message){const el=$('accountMessage');if(el){el.textContent=message;el.setAttribute('role','status');}else console.warn(message);}
+function updateAuthUI(){
+ const loggedIn=!!accountUser;
+ $('authStatus').textContent=loggedIn?(cloudGarage?.profile?.nickname||accountUser.user_metadata?.nickname||accountUser.email):'로그인 필요';
+ $('accountEmail').hidden=loggedIn;$('accountPassword').hidden=loggedIn;
+ $('signupNickname').hidden=loggedIn||!signupMode;
+ $('signIn').hidden=loggedIn||signupMode;$('signUp').hidden=loggedIn;
+ $('signUp').textContent=signupMode?'회원가입 완료':'회원가입';
+ $('cancelSignUp').hidden=loggedIn||!signupMode;$('signOut').hidden=!loggedIn;
+ $('mainMenu').hidden=!loggedIn;
+ $('wallet').hidden=!loggedIn;$('openGarage').hidden=!loggedIn;$('openShop').hidden=!loggedIn;
+ if(loggedIn){$('nickname').value=cloudGarage?.profile?.nickname||accountUser.user_metadata?.nickname||'Racer';}
+ $('accountMessage').textContent=loggedIn?'환영합니다! 게임 모드를 선택하세요.':signupMode?'이메일, 비밀번호(8자 이상), 닉네임(2~14자)을 입력하세요.':'로그인하거나 회원가입하여 시작하세요.';
 }
-function updateAuthUI(){ $('authStatus').textContent=accountUser?accountUser.email:'게스트 플레이';$('signIn').hidden=!!accountUser;$('signUp').hidden=!!accountUser;$('signOut').hidden=!accountUser;$('accountEmail').hidden=!!accountUser;$('accountPassword').hidden=!!accountUser;$('accountMessage').textContent=accountUser?'계정 연결됨 · 코인과 차고가 클라우드에 저장됩니다.':'로그인하면 코인과 차고가 계정에 안전하게 저장됩니다.'; }
-async function signIn(){const email=$('accountEmail').value.trim(),password=$('accountPassword').value;if(!email||!password)return alert('이메일과 비밀번호를 입력해주세요.');const {data,error}=await supabase.auth.signInWithPassword({email,password});if(error)return alert(error.message);accountUser=data.user;await loadCloudAccount();updateAuthUI();}
-async function signUp(){const email=$('accountEmail').value.trim(),password=$('accountPassword').value,nickname=$('nickname').value.trim()||'Racer';if(!email||password.length<8)return alert('이메일과 8자 이상의 비밀번호를 입력해주세요.');const {data,error}=await supabase.auth.signUp({email,password,options:{data:{nickname}}});if(error)return alert(error.message);if(data.session){accountUser=data.user;await loadCloudAccount();updateAuthUI();}else alert('가입 요청이 완료됐어요. 이메일 인증 후 로그인해주세요.');}
-
+async function syncAuth(){
+ const {data:{session}}=await supabase.auth.getSession();
+ accountUser=session?.user||null;
+ if(accountUser){try{await loadCloudAccount();}catch(e){console.error(e);notify('계정 정보 불러오기 실패: '+e.message);}}
+ updateAuthUI();showPanel('lobby');
+}
+async function signIn(){
+ const email=$('accountEmail').value.trim(),password=$('accountPassword').value;
+ if(!email||!password){notify('이메일과 비밀번호를 입력해주세요.');return;}
+ const {data,error}=await supabase.auth.signInWithPassword({email,password});
+ if(error){notify(error.message);return;}
+ accountUser=data.user;signupMode=false;
+ try{await loadCloudAccount();}catch(e){console.error(e);notify('로그인했지만 차고 정보를 불러오지 못했습니다: '+e.message);}
+ updateAuthUI();showPanel('lobby');
+}
+async function signUp(){
+ if(!signupMode){signupMode=true;updateAuthUI();$('signupNickname').focus();return;}
+ const email=$('accountEmail').value.trim(),password=$('accountPassword').value,nickname=$('signupNickname').value.trim();
+ if(!email||password.length<8){notify('이메일과 8자 이상의 비밀번호를 입력해주세요.');return;}
+ if(nickname.length<2||nickname.length>14){notify('닉네임은 2~14자로 입력해주세요.');$('signupNickname').focus();return;}
+ const {data,error}=await supabase.auth.signUp({email,password,options:{data:{nickname}}});
+ if(error){notify(error.message);return;}
+ signupMode=false;
+ if(data.session){accountUser=data.user;try{await loadCloudAccount();}catch(e){console.error(e);}updateAuthUI();showPanel('lobby');}
+ else{updateAuthUI();notify('가입 요청이 완료됐습니다. 이메일 인증 후 로그인해주세요.');}
+}
 
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const setStatus=t=>$('connection').textContent=t;
 function send(o){if(ws&&ws.readyState===1)ws.send(JSON.stringify(o));}
-function showPanel(id){['lobby','setup','results','shop','garage'].forEach(k=>$(k).hidden=k!==id);}
+function showPanel(id){if(!accountUser&&id!=='lobby')id='lobby';['lobby','setup','results','shop','garage'].forEach(k=>$(k).hidden=k!==id);const racing=!id&&started&&!!accountUser;$('raceControls').hidden=!racing;$('raceHud').hidden=!racing;$('message').hidden=!racing;$('roominfo').hidden=!(id==='setup'||racing);$('leader').hidden=!racing||players.length<2;}
 function makeCar(color,type='balance'){
  const g=new THREE.Group(),paint=new THREE.MeshStandardMaterial({color,roughness:.35,metalness:.12}),dark=new THREE.MeshStandardMaterial({color:0x17212a,roughness:.7});
  const dimensions={acceleration:[2.05,.56,3.65],topSpeed:[1.92,.5,4.15],cornering:[2.18,.54,3.55],balance:[2.1,.58,3.8]}[type]||[2.1,.58,3.8];
@@ -259,7 +293,7 @@ function connect(){
  ws.onopen=()=>send({type:'join',name:$('nickname').value.trim()||'Racer',room:$('room').value.trim()||'SPEED',car:carId,team,cosmetics:cosmeticsFor(carId)});
  ws.onmessage=e=>{const m=JSON.parse(e.data);
   if(m.type==='joined'){myId=m.id;online=true;joined=true;setStatus('● ONLINE');}
-  if(m.type==='error')alert(m.message);
+  if(m.type==='error')notify(m.message);
   if(m.type==='room-state')applyRoom(m);
   if(m.type==='players')updateRemoteData(m.players);
   if(m.type==='race-start'){startRace();}
@@ -310,11 +344,11 @@ function updateRemoteData(list){
  $('position').textContent=ranked.findIndex(p=>p.id===myId)+1||'-';
 }
 function startRace(){
- started=true;finished=false;elapsed=0;raceStart=performance.now();resetCar();$('raceHud').style.display='flex';$('message').textContent='GO! 3랩을 완주하세요!';showPanel('');
+ started=true;finished=false;elapsed=0;raceStart=performance.now();resetCar();$('message').textContent='GO! 3랩을 완주하세요!';showPanel('');
 }
 function finishRace(){
  if(finished)return;finished=true;started=false;speed=0;elapsed=performance.now()-raceStart;
- if(timeAttackMode){saveTimeAttackRecord();$('message').textContent='타임어택 완주! '+formatTime(elapsed);showPanel('setup');$('raceHud').style.display='none';return;}
+ if(timeAttackMode){saveTimeAttackRecord();$('message').textContent='타임어택 완주! '+formatTime(elapsed);showPanel('setup');return;}
  $('message').textContent='FINISH! 결과를 기다리는 중';
  if(solo){showResults({mode:'individual',results:[{id:myId,name:$('nickname').value.trim()||'Racer',team:null,finished:true,rank:1,points:10,coins:0}],raceId:'solo-'+Date.now(),teams:{red:0,blue:0,winner:'draw'}});}
  else send({type:'finish',elapsed});
@@ -383,7 +417,7 @@ async function saveTimeAttackRecord(){
  $('message').textContent='기록 등록 완료! '+formatTime(elapsed);await loadTimeAttackBoard();
 }
 
-function startLocal(){started=true;finished=false;elapsed=0;raceStart=performance.now();resetCar();$('raceHud').style.display='flex';showPanel('');$('message').textContent='GO! 3랩을 완주하세요!';}
+function startLocal(){started=true;finished=false;elapsed=0;raceStart=performance.now();resetCar();showPanel('');$('message').textContent='GO! 3랩을 완주하세요!';}
 function update(dt){
  const stats=getVehicleStats(carId,vehicleGrade),accel=keys.gas?stats.accel:0,brake=keys.brake?34:0;
  if(started){speed+=accel*dt;speed-=brake*dt;speed*=Math.pow(.989,dt*60);speed=clamp(speed,0,stats.max);
@@ -409,9 +443,9 @@ function animate(){requestAnimationFrame(animate);const dt=Math.min(clock.getDel
  camera.position.lerp(target.clone().add(behind),.09);camera.lookAt(target.clone().add(new THREE.Vector3(0,1,0)));renderer.render(scene,camera);}
 function hold(id,key){const el=$(id),down=e=>{e.preventDefault();keys[key]=true;},up=e=>{e.preventDefault();keys[key]=false;};el.addEventListener('pointerdown',down);['pointerup','pointerleave','pointercancel'].forEach(ev=>el.addEventListener(ev,up));}
 hold('left','left');hold('right','right');hold('gas','gas');hold('brake','brake');
-addEventListener('keydown',e=>{if(['ArrowLeft','a','A'].includes(e.key))keys.left=true;if(['ArrowRight','d','D'].includes(e.key))keys.right=true;if(['ArrowUp','w','W'].includes(e.key))keys.gas=true;if(['ArrowDown','s','S'].includes(e.key))keys.brake=true;});
-addEventListener('keyup',e=>{if(['ArrowLeft','a','A'].includes(e.key))keys.left=false;if(['ArrowRight','d','D'].includes(e.key))keys.right=false;if(['ArrowUp','w','W'].includes(e.key))keys.gas=false;if(['ArrowDown','s','S'].includes(e.key))keys.brake=false;});
-$('join').onclick=()=>{if(joined)return;roomCode=$('room').value.trim().toUpperCase()||'SPEED';connect();};
+addEventListener('keydown',e=>{if(e.target?.closest?.('input,textarea,select,[contenteditable]')||!started||!accountUser)return;if(['ArrowLeft','a','A'].includes(e.key))keys.left=true;if(['ArrowRight','d','D'].includes(e.key))keys.right=true;if(['ArrowUp','w','W'].includes(e.key))keys.gas=true;if(['ArrowDown','s','S'].includes(e.key))keys.brake=true;});
+addEventListener('keyup',e=>{if(e.target?.closest?.('input,textarea,select,[contenteditable]')||!started||!accountUser)return;if(['ArrowLeft','a','A'].includes(e.key))keys.left=false;if(['ArrowRight','d','D'].includes(e.key))keys.right=false;if(['ArrowUp','w','W'].includes(e.key))keys.gas=false;if(['ArrowDown','s','S'].includes(e.key))keys.brake=false;});
+$('join').onclick=()=>{if(!accountUser)return notify('먼저 로그인해주세요.');if(joined)return;roomCode=$('room').value.trim().toUpperCase()||'SPEED';connect();};
 function saveNickname(){
  const value=$('nicknameEdit').value.trim();
  if(!value){alert('닉네임을 입력해주세요.');return;}
@@ -424,18 +458,18 @@ function saveNickname(){
 $('saveNickname').onclick=saveNickname;
 $('nicknameEdit').addEventListener('keydown',e=>{if(e.key==='Enter')saveNickname();});
 
-$('solo').onclick=()=>{timeAttackMode=false;solo=true;joined=true;online=false;myId='local';mode='individual';$('nicknameEdit').value=$('nickname').value.trim()||'Racer';showPanel('setup');setStatus('● PRACTICE');$('roominfo').textContent='PRACTICE MODE';$('roster').innerHTML='<span class="roster-chip">🏎 나</span>';$('rosterCount').textContent='1 / 1';$('hostHint').textContent='혼자 연습 모드입니다.';$('startRace').disabled=false;};
-$('timeAttack').onclick=async()=>{timeAttackMode=true;solo=true;joined=true;online=false;myId='local';mode='individual';$('nicknameEdit').value=$('nickname').value.trim()||'Racer';$('hostHint').textContent='3랩 타임어택 · 전체 기록 랭킹에 도전하세요.';$('startRace').textContent='타임어택 시작';$('startRace').disabled=false;showPanel('setup');setStatus('● TIME ATTACK');$('roominfo').textContent='TIME ATTACK · SOLO';await loadCloudAccount().catch(()=>{});renderVehicleShop();await loadTimeAttackBoard();};
+$('solo').onclick=()=>{if(!accountUser)return;timeAttackMode=false;solo=true;joined=true;online=false;myId='local';mode='individual';$('nicknameEdit').value=$('nickname').value.trim()||'Racer';showPanel('setup');setStatus('● PRACTICE');$('roominfo').textContent='PRACTICE MODE';$('roster').innerHTML='<span class="roster-chip">🏎 나</span>';$('rosterCount').textContent='1 / 1';$('hostHint').textContent='혼자 연습 모드입니다.';$('startRace').disabled=false;};
+$('timeAttack').onclick=async()=>{if(!accountUser)return;timeAttackMode=true;$('timeAttackRecords').hidden=false;solo=true;joined=true;online=false;myId='local';mode='individual';$('nicknameEdit').value=$('nickname').value.trim()||'Racer';$('hostHint').textContent='3랩 타임어택 · 전체 기록 랭킹에 도전하세요.';$('startRace').textContent='타임어택 시작';$('startRace').disabled=false;showPanel('setup');setStatus('● TIME ATTACK');$('roominfo').textContent='TIME ATTACK · SOLO';await loadCloudAccount().catch(()=>{});renderVehicleShop();await loadTimeAttackBoard();};
 $('refreshRecords').onclick=loadTimeAttackBoard;
-$('backLobby').onclick=()=>{if(ws)ws.close();joined=false;solo=false;timeAttackMode=false;$('startRace').textContent='3랩 레이스 시작';showPanel('lobby');setStatus('● OFFLINE');};
+$('backLobby').onclick=()=>{if(ws)ws.close();$('timeAttackRecords').hidden=true;joined=false;solo=false;timeAttackMode=false;$('startRace').textContent='3랩 레이스 시작';showPanel('lobby');setStatus('● OFFLINE');};
 document.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>{if(myId!==hostId&&!solo)return;setMode(b.dataset.mode);});
 document.querySelectorAll('[data-track]').forEach(b=>b.onclick=()=>{if(myId!==hostId&&!solo)return;setTrack(b.dataset.track);if(timeAttackMode)loadTimeAttackBoard();});
 document.querySelectorAll('[data-car]').forEach(b=>b.onclick=()=>selectCar(b.dataset.car));
 document.querySelectorAll('[data-team]').forEach(b=>b.onclick=()=>selectTeam(b.dataset.team));
 $('startRace').onclick=()=>{if(solo){startLocal();return;}if(myId===hostId)send({type:'start'});};
 $('again').onclick=()=>{showPanel('setup');if(solo){resetCar();$('startRace').disabled=false;}else send({type:'restart'});};
-$('signIn').onclick=signIn;$('signUp').onclick=signUp;$('signOut').onclick=async()=>{await supabase.auth.signOut();accountUser=null;updateAuthUI();showPanel('lobby');};
-supabase.auth.onAuthStateChange(async (_event,session)=>{accountUser=session?.user||null;updateAuthUI();if(accountUser){try{await loadCloudAccount();}catch(e){console.error(e);}}});
+$('signIn').onclick=signIn;$('signUp').onclick=signUp;$('cancelSignUp').onclick=()=>{signupMode=false;updateAuthUI();$('accountEmail').focus();};$('signOut').onclick=async()=>{if(ws)ws.close();joined=false;started=false;solo=false;timeAttackMode=false;await supabase.auth.signOut();accountUser=null;cloudGarage=null;signupMode=false;updateAuthUI();showPanel('lobby');};
+supabase.auth.onAuthStateChange((_event,session)=>{const next=session?.user||null;if(next?.id===accountUser?.id)return;accountUser=next;if(!next){cloudGarage=null;joined=false;started=false;showPanel('lobby');}updateAuthUI();});
 document.querySelectorAll('[data-grade]').forEach(b=>b.onclick=()=>selectGrade(b.dataset.grade));renderVehicleRatings();renderVehicleShop();$('openGarage').onclick=renderGarage;$('closeGarage').onclick=()=>showPanel(joined?'setup':'lobby');
 $('openShop').onclick=()=>{shopCar=carId;renderShop();showPanel('shop');};
 $('closeShop').onclick=()=>showPanel(joined?'setup':'lobby');
