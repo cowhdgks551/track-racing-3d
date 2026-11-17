@@ -70,7 +70,12 @@ wss.on('connection',ws=>{
   }
   const room=rooms.get(ws.roomCode);if(!room)return;
   const player=room.players.get(ws.id);if(!player)return;
-  if(msg.type==='configure'){
+  if(msg.type==='rename'){
+   const name=String(msg.name||'').trim().slice(0,14);
+   if(!name)return send(player.ws,{type:'error',message:'닉네임을 입력해주세요.'});
+   player.name=name;
+   roomState(room);
+  }else if(msg.type==='configure'){
    if(player.id!==room.hostId||room.started)return;
    const mode=msg.mode==='team'?'team':'individual';
    const track=['yeongam','inje','everland','taebaek'].includes(msg.track)?msg.track:'yeongam';
