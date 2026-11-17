@@ -77,7 +77,7 @@ app.innerHTML=`
   </div>
   <p class="hint">구매한 페인트와 문양은 차량 클래스별로 보관돼. 문양 위치도 직접 조정할 수 있어.</p>
  </section>
-</div></div>
+</div></div>`;
 
 const $=id=>document.getElementById(id);
 const TRACKS={
