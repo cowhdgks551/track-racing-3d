@@ -31,7 +31,7 @@ jobs:
         env:
           VITE_GAME_SERVER_URL: https://track-racing-3d.onrender.com
       - name: Package Windows installer
-        run: npx electron-builder --win nsis --x64
+        run: npx electron-builder --win nsis --x64 --publish never
       - uses: actions/upload-artifact@v4
         with:
           name: TRACK-RACING-3D-Windows-x64
